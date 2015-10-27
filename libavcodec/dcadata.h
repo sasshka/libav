@@ -45,10 +45,15 @@ extern const int8_t ff_dca_high_freq_vq[1024][32];
 extern const float ff_dca_fir_32bands_perfect[512];
 extern const float ff_dca_fir_32bands_nonperfect[512];
 
+extern const int32_t ff_dca_fir_32bands_perfect_fixed[512];
+extern const int32_t ff_dca_fir_32bands_nonperfect_fixed[512];
+
 extern const float ff_dca_lfe_fir_64[256];
+extern const int32_t ff_dca_lfe_fir_64_fixed[512];
 extern const float ff_dca_lfe_fir_128[256];
 extern const float ff_dca_lfe_xll_fir_64[256];
 extern const float ff_dca_fir_64bands[1024];
+extern const int32_t ff_dca_band_fir_x96[1024];
 
 #define FF_DCA_DMIXTABLE_SIZE      242
 #define FF_DCA_INV_DMIXTABLE_SIZE  201
