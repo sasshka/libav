@@ -21,7 +21,9 @@
 #include "libavutil/common.h"
 #include "libavutil/log.h"
 
+#include "avcodec.h"
 #include "dca.h"
+#include "dcadata.h"
 #include "dca_syncwords.h"
 #include "get_bits.h"
 
@@ -343,6 +345,11 @@ void ff_dca_exss_parse_header(DCAContext *s)
                            "DTS-XLL: ignoring XLL extension\n");
                     break;
                 }
+                av_log(s->avctx, AV_LOG_ERROR,
+                       "bps = %d\n", ff_dca_bits_per_sample[s->source_pcm_res]);
+
+                s->avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
+                s->avctx->bits_per_raw_sample = ff_dca_bits_per_sample[s->source_pcm_res];
                 av_log(s->avctx, AV_LOG_DEBUG,
                        "DTS-XLL: decoding XLL extension\n");
                 if (ff_dca_xll_decode_header(s)        == 0 &&

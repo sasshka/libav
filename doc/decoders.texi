@@ -53,4 +53,13 @@ Loud sounds are fully compressed.  Soft sounds are enhanced.
 
 @end table
 
+@section dca
+
+@table @option
+
+@item -force_fixed 1
+Force fixed-point reconstruction for any kind of input.
+
+@end table
+
 @c man end AUDIO DECODERS

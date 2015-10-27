@@ -139,7 +139,7 @@ typedef struct DCAAudioHeader {
     int scalefactor_huffman[DCA_PRIM_CHANNELS_MAX]; ///< scale factor code book
     int bitalloc_huffman[DCA_PRIM_CHANNELS_MAX];    ///< bit allocation quantizer select
     int quant_index_huffman[DCA_PRIM_CHANNELS_MAX][DCA_ABITS_MAX]; ///< quantization index codebook select
-    float scalefactor_adj[DCA_PRIM_CHANNELS_MAX][DCA_ABITS_MAX];   ///< scale factor adjustment
+    int scalefactor_adj[DCA_PRIM_CHANNELS_MAX][DCA_ABITS_MAX];     ///< scale factor adjustment
 
     int subframes;              ///< number of subframes
     int total_channels;         ///< number of channels including extensions
@@ -147,15 +147,16 @@ typedef struct DCAAudioHeader {
 } DCAAudioHeader;
 
 typedef struct DCAChan {
-    DECLARE_ALIGNED(32, float, subband_samples)[DCA_BLOCKS_MAX][DCA_SUBBANDS][8];
+    DECLARE_ALIGNED(32, int, subband_samples)[DCA_BLOCKS_MAX][DCA_SUBBANDS][8];
 
     /* Subband samples history (for ADPCM) */
-    DECLARE_ALIGNED(16, float, subband_samples_hist)[DCA_SUBBANDS][4];
+    DECLARE_ALIGNED(16, int, subband_samples_hist)[DCA_SUBBANDS][4];
     int hist_index;
 
     /* Half size is sufficient for core decoding, but for 96 kHz data
      * we need QMF with 64 subbands and 1024 samples. */
     DECLARE_ALIGNED(32, float, subband_fir_hist)[1024];
+    DECLARE_ALIGNED(32, int, subband_hist)[1024];
     DECLARE_ALIGNED(32, float, subband_fir_noidea)[64];
 
     /* Primary audio coding side information */
@@ -220,7 +221,8 @@ typedef struct DCAContext {
     uint16_t core_downmix_codes[DCA_PRIM_CHANNELS_MAX + 1][4];   ///< embedded downmix coefficients (9-bit codes)
 
 
-    float lfe_data[2 * DCA_LFE_MAX * (DCA_BLOCKS_MAX + 4)];      ///< Low frequency effect data
+    int lfe_data[2 * DCA_LFE_MAX * (DCA_BLOCKS_MAX + 4)];        ///< Low frequency effect data
+    float lfe_data_flt[2 * DCA_LFE_MAX * (DCA_BLOCKS_MAX + 4)];
     int lfe_scale_factor;
 
     /* Subband samples history (for ADPCM) */
@@ -230,8 +232,8 @@ typedef struct DCAContext {
 
     int output;                 ///< type of output
 
-    float *samples_chanptr[DCA_PRIM_CHANNELS_MAX + 1];
-    float *extra_channels[DCA_PRIM_CHANNELS_MAX + 1];
+    void *samples_chanptr[DCA_PRIM_CHANNELS_MAX + 1];
+    void *extra_channels[DCA_PRIM_CHANNELS_MAX + 1];
     uint8_t *extra_channels_buffer;
     unsigned int extra_channels_buffer_size;
 
@@ -246,6 +248,8 @@ typedef struct DCAContext {
 
     int core_ext_mask;          ///< present extensions in the core substream
     int exss_ext_mask;          ///< Non-core extensions
+
+    int fixed;                  ///< force using fixedpoint QMF
 
     /* XCh extension information */
     int xch_present;            ///< XCh extension present and valid
