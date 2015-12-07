@@ -44,6 +44,7 @@
 #include "dcadata.h"
 #include "dcadsp.h"
 #include "dcahuff.h"
+#include "dcamath.h"
 #include "fft.h"
 #include "fmtconvert.h"
 #include "get_bits.h"
@@ -520,7 +521,8 @@ static int dca_subframe_header(DCAContext *s, int base_channel, int block_index)
         /* LFE samples */
         int lfe_samples    = 2 * s->lfe * (4 + block_index);
         int lfe_end_sample = 2 * s->lfe * (4 + block_index + s->subsubframes[s->current_subframe]);
-        float lfe_scale;
+        float lfe_scale_flt;
+        int lfe_scale;
 
         for (j = lfe_samples; j < lfe_end_sample; j++) {
             /* Signed 8 bits int */
@@ -532,10 +534,14 @@ static int dca_subframe_header(DCAContext *s, int base_channel, int block_index)
         s->lfe_scale_factor = ff_dca_scale_factor_quant7[get_bits(&s->gb, 7)];
 
         /* Quantization step size * scale factor */
-        lfe_scale = 0.035 * s->lfe_scale_factor;
+        lfe_scale_flt = 0.035 * s->lfe_scale_factor;
+        /* 4697620 is 24-bit fixedpoint representation of 0.035 */
+        lfe_scale     = dca_norm((int64_t)4697620 * s->lfe_scale_factor, 23);
 
-        for (j = lfe_samples; j < lfe_end_sample; j++)
-            s->lfe_data[j] *= lfe_scale;
+        for (j = lfe_samples; j < lfe_end_sample; j++) {
+            s->lfe_data_flt[j] = lfe_scale_flt * s->lfe_data[j];
+            s->lfe_data[j]     = dca_clip23((s->lfe_data[j] * lfe_scale) >> 4);
+        }
     }
 
     return 0;
@@ -932,11 +938,24 @@ static int dca_subsubframe(DCAContext *s, int base_channel, int block_index)
     return 0;
 }
 
-static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
+static int dca_qmf_filters(DCAContext *s, int block_index, int upsample)
 {
     int k;
 
-    if (upsample) {
+    // for the 96 kHz lossless
+    if (s->fixed && upsample) {
+        int **subband_samples_hi = NULL;
+
+        for (k = 0; k < s->audio_header.prim_channels; k++) {
+            int (*subband_samples)[SAMPLES_PER_SUBBAND] =
+                s->dca_chan[k].subband_samples[block_index];
+            int *samples_out = s->samples_chanptr[s->channel_order_tab[k]];
+
+            qmf_64_subbands_fixed(subband_samples, subband_samples_hi,
+                                  s->dca_chan[k].subband_hist, samples_out, 8);
+        }
+      // for the 96 kHz lossy
+    } else if (upsample) {
         LOCAL_ALIGNED(32, float, samples, [DCA_SUBBANDS_X96K], [SAMPLES_PER_SUBBAND]);
 
         if (!s->qmf64_table) {
@@ -945,7 +964,6 @@ static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
                 return AVERROR(ENOMEM);
         }
 
-        /* 64 subbands QMF */
         for (k = 0; k < s->audio_header.prim_channels; k++) {
             int32_t (*subband_samples)[SAMPLES_PER_SUBBAND] =
                      s->dca_chan[k].subband_samples[block_index];
@@ -959,6 +977,20 @@ static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
                                 /* Upsampling needs a factor 2 here. */
                                 M_SQRT2 / 32768.0);
         }
+      // for the 48 kHz lossless
+    } else if (s->fixed) {
+        for (k = 0; k < s->audio_header.prim_channels; k++) {
+            int (*subband_samples)[SAMPLES_PER_SUBBAND] =
+                s->dca_chan[k].subband_samples[block_index];
+            int **subband_samples_hi = NULL;
+            int *samples_out = s->samples_chanptr[s->channel_order_tab[k]];
+
+            qmf_32_subbands_fixed(subband_samples, subband_samples_hi,
+                                  s->dca_chan[k].subband_hist,
+                                  samples_out, SAMPLES_PER_SUBBAND,
+                                  s->multirate_inter);
+        }
+      // for the 48 kHz lossy
     } else {
         /* 32 subbands QMF */
         LOCAL_ALIGNED(32, float, samples, [DCA_SUBBANDS], [SAMPLES_PER_SUBBAND]);
@@ -977,11 +1009,21 @@ static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
         }
     }
 
-    /* Generate LFE samples for this subsubframe FIXME!!! */
-    if (s->lfe) {
+    return 0;
+}
+
+static void dca_generate_lfe(DCAContext *s, int block_index, int upsample)
+{
+    if (s->fixed) {
+        int *samples = s->samples_chanptr[ff_dca_lfe_index[s->amode]];
+        int synth_x96 = 0; // X96 synthesis flag should be set if X96 would be implemented
+        int *lfe = s->lfe_data + 2 * s->lfe * (block_index + 4);
+
+        lfe_interpolation_fir_fixed(samples, lfe, 2 * s->lfe, synth_x96);
+    } else {
         float *samples = s->samples_chanptr[ff_dca_lfe_index[s->amode]];
         lfe_interpolation_fir(s,
-                              s->lfe_data + 2 * s->lfe * (block_index + 4),
+                              s->lfe_data_flt + 2 * s->lfe * (block_index + 4),
                               samples);
         if (upsample) {
             unsigned i;
@@ -994,13 +1036,45 @@ static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
             samples[1] = samples[0];
         }
     }
+}
+
+static int dca_filter_channels(DCAContext *s, int block_index, int upsample)
+{
+    int ret, k;
+
+    /* Choose suitable QMF filter. */
+    ret = dca_qmf_filters(s, block_index, upsample);
+    if (ret < 0)
+        return ret;
+
+    /* Generate LFE samples for this subsubframe FIXME!!! */
+    if (s->lfe)
+        dca_generate_lfe(s, block_index, upsample);
+
+    /* Fixed-point QMF outputs 24-bit samples but libavcodec
+     * supports 32-bit */
+    if (s->fixed) {
+        int nb_chans = s->lfe ? s->audio_header.prim_channels + 1 :
+            s->audio_header.prim_channels;
+        int subbands = upsample ? DCA_SUBBANDS_X96K : DCA_SUBBANDS;
+        int nb_samples = SAMPLES_PER_SUBBAND * subbands;
+
+        for (k = 0; k < nb_chans; k++) {
+            int *samples = s->samples_chanptr[k];
+            int i;
+
+            for (i = 0; i < nb_samples; i++)
+                samples[i] <<= 8;
+        }
+    }
 
     /* FIXME: This downmixing is probably broken with upsample.
-     * Probably totally broken also with XLL in general. */
-    /* Downmixing to Stereo */
-    if (s->audio_header.prim_channels + !!s->lfe > 2 &&
-        s->avctx->request_channel_layout == AV_CH_LAYOUT_STEREO) {
-        dca_downmix(s->samples_chanptr, s->amode, !!s->lfe, s->downmix_coef,
+     * Downmixing to Stereo. */
+    if ((!s->fixed && s->audio_header.prim_channels + !!s->lfe > 2 &&
+         s->avctx->request_channel_layout == AV_CH_LAYOUT_STEREO)) {
+        float **samples = (float **)s->samples_chanptr;
+
+        dca_downmix(samples, s->amode, !!s->lfe, s->downmix_coef,
                     s->channel_order_tab);
     }
 
@@ -1355,6 +1429,15 @@ static int set_channel_layout(AVCodecContext *avctx, int channels, int num_core_
     return 0;
 }
 
+/* Multiply int vector src with scalar mul and add it to destination vector dst. */
+static void vector_by_scalar(int *dst, const int *src, int mul, int len)
+{
+    int i;
+
+    for (i = 0; i < len; i++)
+        dst[i] += src[i] * (int64_t)mul + 0x8000 >> 16;
+}
+
 /**
  * Main frame decoding function
  * FIXME add arguments
@@ -1369,7 +1452,6 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
     int lfe_samples;
     int num_core_channels = 0;
     int i, ret;
-    float  **samples_flt;
     DCAContext *s = avctx->priv_data;
     int channels, full_channels;
     int upsample = 0;
@@ -1437,6 +1519,8 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
                    xll_nb_samples, frame->nb_samples);
             s->exss_ext_mask &= ~DCA_EXT_EXSS_XLL;
         } else {
+            if (!s->lossy)
+                s->fixed = 1;
             if (2 * frame->nb_samples == xll_nb_samples) {
                 av_log(s->avctx, AV_LOG_INFO,
                        "XLL: upsampling core channels by a factor of 2\n");
@@ -1463,7 +1547,6 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
-    samples_flt = (float **) frame->extended_data;
 
     /* allocate buffer for extra channels if downmixing */
     if (avctx->channels < full_channels) {
@@ -1477,7 +1560,6 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
                        &s->extra_channels_buffer_size, ret);
         if (!s->extra_channels_buffer)
             return AVERROR(ENOMEM);
-
         ret = av_samples_fill_arrays((uint8_t **) s->extra_channels, NULL,
                                      s->extra_channels_buffer,
                                      full_channels - channels,
@@ -1491,27 +1573,40 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
         int ch;
         unsigned block = upsample ? 512 : 256;
         for (ch = 0; ch < channels; ch++)
-            s->samples_chanptr[ch] = samples_flt[ch] + i * block;
-        for (; ch < full_channels; ch++)
+            s->samples_chanptr[ch] = (int *)frame->extended_data[ch] + i * block;
+        for (; ch < full_channels; ch++) {
             s->samples_chanptr[ch] = s->extra_channels[ch - channels] + i * block;
+        }
 
         dca_filter_channels(s, i, upsample);
 
         /* If this was marked as a DTS-ES stream we need to subtract back- */
         /* channel from SL & SR to remove matrixed back-channel signal */
         if ((s->source_pcm_res & 1) && s->xch_present) {
-            float *back_chan = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel]];
-            float *lt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 2]];
-            float *rt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 1]];
-            s->fdsp.vector_fmac_scalar(lt_chan, back_chan, -M_SQRT1_2, 256);
-            s->fdsp.vector_fmac_scalar(rt_chan, back_chan, -M_SQRT1_2, 256);
+            if (s->fixed) {
+                int *back_chan = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel]];
+                int *lt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 2]];
+                int *rt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 1]];
+                vector_by_scalar(lt_chan, back_chan,
+                                 (int)(M_SQRT1_2 * -0x10000), 256);
+                vector_by_scalar(rt_chan, back_chan,
+                                 (int)(M_SQRT1_2 * -0x10000), 256);
+            } else {
+                float *back_chan = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel]];
+                float *lt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 2]];
+                float *rt_chan   = s->samples_chanptr[s->channel_order_tab[s->xch_base_channel - 1]];
+                s->fdsp.vector_fmac_scalar(lt_chan, back_chan, -M_SQRT1_2, 256);
+                s->fdsp.vector_fmac_scalar(rt_chan, back_chan, -M_SQRT1_2, 256);
+            }
         }
     }
 
     /* update lfe history */
     lfe_samples = 2 * s->lfe * (s->sample_blocks / SAMPLES_PER_SUBBAND);
-    for (i = 0; i < 2 * s->lfe * 4; i++)
-        s->lfe_data[i] = s->lfe_data[i + lfe_samples];
+    for (i = 0; i < 2 * s->lfe * 4; i++) {
+        s->lfe_data_flt[i] = s->lfe_data_flt[i + lfe_samples];
+        s->lfe_data[i]     = s->lfe_data[i + lfe_samples];
+    }
 
     if (s->exss_ext_mask & DCA_EXT_EXSS_XLL) {
         ret = ff_dca_xll_decode_audio(s, frame);
@@ -1551,7 +1646,13 @@ static av_cold int dca_decode_init(AVCodecContext *avctx)
     ff_dcadsp_init(&s->dcadsp);
     ff_fmt_convert_init(&s->fmt_conv, avctx);
 
-    avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    if (avctx->request_sample_fmt == AV_SAMPLE_FMT_S32P) {
+        s->fixed = 1;
+        avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
+    } else {
+        s->fixed = 0;
+        avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
+    }
 
     /* allow downmixing to stereo */
     if (avctx->channels > 2 &&
@@ -1574,6 +1675,7 @@ static av_cold int dca_decode_end(AVCodecContext *avctx)
 static const AVOption options[] = {
     { "disable_xch", "disable decoding of the XCh extension", offsetof(DCAContext, xch_disable), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM },
     { "disable_xll", "disable decoding of the XLL extension", offsetof(DCAContext, xll_disable), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM },
+    { "force_lossy", "force lossy XLL decoding",              offsetof(DCAContext, lossy), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM },
     { NULL },
 };
 
@@ -1595,6 +1697,7 @@ AVCodec ff_dca_decoder = {
     .close           = dca_decode_end,
     .capabilities    = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .sample_fmts     = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
+                                                       AV_SAMPLE_FMT_S32P,
                                                        AV_SAMPLE_FMT_NONE },
     .profiles        = NULL_IF_CONFIG_SMALL(ff_dca_profiles),
     .priv_class      = &dca_decoder_class,

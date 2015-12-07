@@ -53,4 +53,15 @@ Loud sounds are fully compressed.  Soft sounds are enhanced.
 
 @end table
 
+@section dca
+Fixed-point reconstruction for any kind of input might be
+forced by using @code{-request_sample_fmt @var{s32p}} option.
+
+@table @option
+
+@item -force_lossy 1
+Force lossy mode for the XLL streams.
+
+@end table
+
 @c man end AUDIO DECODERS

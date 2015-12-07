@@ -14,6 +14,10 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with Libav; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ *
+ * The functions idct_perform32_fixed, qmf_32_subbands_fixed, idct_perform64_fixed,
+ * qmf_64_subbands_fixed and the auxiliary functions they are using are adapted
+ * from libdcadec, https://github.com/foo86/dcadec/tree/master/libdcadec.
  */
 
 #ifndef AVCODEC_DCADSP_H
@@ -28,7 +32,7 @@
 
 
 typedef struct DCADSPContext {
-    void (*lfe_fir[2])(float *out, const float *in, const float *coefs);
+    void (*lfe_fir[2])(void *out, const float *in, const float *coefs);
     void (*qmf_32_subbands)(float samples_in[DCA_SUBBANDS][SAMPLES_PER_SUBBAND], int sb_act,
                             SynthFilterContext *synth, FFTContext *imdct,
                             float synth_buf_ptr[512],
@@ -47,5 +51,14 @@ void ff_dcadsp_init(DCADSPContext *s);
 void ff_dcadsp_init_aarch64(DCADSPContext *s);
 void ff_dcadsp_init_arm(DCADSPContext *s);
 void ff_dcadsp_init_x86(DCADSPContext *s);
+
+void idct_perform32_fixed(int * restrict input, int * restrict output);
+void qmf_32_subbands_fixed(int subband_samples[32][8], int **subband_samples_hi,
+                           int *history, int *pcm_samples, int nb_samples, int swich);
+void idct_perform64_fixed(int * restrict input, int * restrict output);
+void qmf_64_subbands_fixed(int subband_samples[64][8], int **subband_samples_hi,
+                           int *history, int *pcm_samples, int nb_samples);
+void lfe_interpolation_fir_fixed(int *pcm_samples, int *lfe_samples,
+                                 int nb_samples, int synth_x96);
 
 #endif /* AVCODEC_DCADSP_H */
