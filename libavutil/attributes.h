@@ -123,4 +123,10 @@
 #    define av_noreturn
 #endif
 
+#if AV_GCC_VERSION_AT_LEAST(4,3)
+#   define av_unlikely(x) __builtin_expect((x) != 0, 0)
+#else
+#   define av_unlikely(x) x
+#endif
+
 #endif /* AVUTIL_ATTRIBUTES_H */
