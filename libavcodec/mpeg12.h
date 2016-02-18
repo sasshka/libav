@@ -22,21 +22,23 @@
 #ifndef AVCODEC_MPEG12_H
 #define AVCODEC_MPEG12_H
 
+#include "bitstream.h"
 #include "mpeg12vlc.h"
 #include "mpegvideo.h"
+#include "vlc.h"
 
 extern uint8_t ff_mpeg12_static_rl_table_store[2][2][2*MAX_RUN + MAX_LEVEL + 3];
 
 void ff_mpeg12_common_init(MpegEncContext *s);
 
-static inline int decode_dc(GetBitContext *gb, int component)
+static inline int decode_dc(BitstreamContext *bc, int component)
 {
     int code, diff;
 
     if (component == 0) {
-        code = get_vlc2(gb, ff_dc_lum_vlc.table, DC_VLC_BITS, 2);
+        code = bitstream_read_vlc(bc, ff_dc_lum_vlc.table, DC_VLC_BITS, 2);
     } else {
-        code = get_vlc2(gb, ff_dc_chroma_vlc.table, DC_VLC_BITS, 2);
+        code = bitstream_read_vlc(bc, ff_dc_chroma_vlc.table, DC_VLC_BITS, 2);
     }
     if (code < 0){
         av_log(NULL, AV_LOG_ERROR, "invalid dc code at\n");
@@ -45,12 +47,12 @@ static inline int decode_dc(GetBitContext *gb, int component)
     if (code == 0) {
         diff = 0;
     } else {
-        diff = get_xbits(gb, code);
+        diff = bitstream_read_xbits(bc, code);
     }
     return diff;
 }
 
-int ff_mpeg1_decode_block_intra(GetBitContext *gb,
+int ff_mpeg1_decode_block_intra(BitstreamContext *bc,
                                 const uint16_t *quant_matrix,
                                 uint8_t *const scantable, int last_dc[3],
                                 int16_t *block, int index, int qscale);

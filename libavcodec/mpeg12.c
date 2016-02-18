@@ -28,6 +28,7 @@
 #include "libavutil/attributes.h"
 #include "internal.h"
 #include "avcodec.h"
+#include "bitstream.h"
 #include "mpegvideo.h"
 #include "error_resilience.h"
 #include "mpeg12.h"
@@ -35,6 +36,7 @@
 #include "mpegvideodata.h"
 #include "bytestream.h"
 #include "thread.h"
+#include "vlc.h"
 
 uint8_t ff_mpeg12_static_rl_table_store[2][2][2*MAX_RUN + MAX_LEVEL + 3];
 
@@ -239,7 +241,7 @@ int ff_mpeg1_find_frame_end(ParseContext *pc, const uint8_t *buf, int buf_size, 
 
 #define MAX_INDEX (64 - 1)
 
-int ff_mpeg1_decode_block_intra(GetBitContext *gb,
+int ff_mpeg1_decode_block_intra(BitstreamContext *bc,
                                 const uint16_t *quant_matrix,
                                 uint8_t *const scantable, int last_dc[3],
                                 int16_t *block, int index, int qscale)
@@ -250,7 +252,7 @@ int ff_mpeg1_decode_block_intra(GetBitContext *gb,
     /* DC coefficient */
     component = index <= 3 ? 0 : index - 4 + 1;
 
-    diff = decode_dc(gb, component);
+    diff = decode_dc(bc, component);
     if (diff >= 0xffff)
         return AVERROR_INVALIDDATA;
 
@@ -261,13 +263,11 @@ int ff_mpeg1_decode_block_intra(GetBitContext *gb,
     block[0] = dc * quant_matrix[0];
 
     {
-        OPEN_READER(re, gb);
         /* now quantify & encode AC coefficients */
         while (1) {
             int level, run, j;
 
-            UPDATE_CACHE(re, gb);
-            GET_RL_VLC(level, run, re, gb, rl->rl_vlc[0], TEX_VLC_BITS, 2, 0);
+            BITSTREAM_RL_VLC(level, run, bc, rl->rl_vlc[0], TEX_VLC_BITS, 2);
 
             if (level == 127) {
                 break;
@@ -279,23 +279,18 @@ int ff_mpeg1_decode_block_intra(GetBitContext *gb,
                 j = scantable[i];
                 level = (level * qscale * quant_matrix[j]) >> 4;
                 level = (level - 1) | 1;
-                level = (level ^ SHOW_SBITS(re, gb, 1)) -
-                        SHOW_SBITS(re, gb, 1);
-                LAST_SKIP_BITS(re, gb, 1);
+                level = (level ^ bitstream_peek_signed(bc, 1)) -
+                        bitstream_peek_signed(bc, 1);
+                bitstream_skip(bc, 1);
             } else {
                 /* escape */
-                run = SHOW_UBITS(re, gb, 6) + 1;
-                LAST_SKIP_BITS(re, gb, 6);
-                UPDATE_CACHE(re, gb);
-                level = SHOW_SBITS(re, gb, 8);
-                SKIP_BITS(re, gb, 8);
+                run = bitstream_read(bc, 6) + 1;
+                level = bitstream_read_signed(bc, 8);
 
                 if (level == -128) {
-                    level = SHOW_UBITS(re, gb, 8) - 256;
-                    LAST_SKIP_BITS(re, gb, 8);
+                    level = bitstream_read(bc, 8) - 256;
                 } else if (level == 0) {
-                    level = SHOW_UBITS(re, gb, 8);
-                    LAST_SKIP_BITS(re, gb, 8);
+                    level = bitstream_read(bc, 8);
                 }
 
                 i += run;
@@ -316,7 +311,6 @@ int ff_mpeg1_decode_block_intra(GetBitContext *gb,
 
             block[j] = level;
         }
-        CLOSE_READER(re, gb);
     }
 
     if (i > MAX_INDEX)

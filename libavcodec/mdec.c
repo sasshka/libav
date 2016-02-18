@@ -28,17 +28,19 @@
  */
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "blockdsp.h"
 #include "idctdsp.h"
 #include "mpeg12.h"
 #include "thread.h"
+#include "vlc.h"
 
 typedef struct MDECContext {
     AVCodecContext *avctx;
     BlockDSPContext bdsp;
     IDCTDSPContext idsp;
     ThreadFrame frame;
-    GetBitContext gb;
+    BitstreamContext bc;
     ScanTable scantable;
     int version;
     int qscale;
@@ -64,10 +66,10 @@ static inline int mdec_decode_block_intra(MDECContext *a, int16_t *block, int n)
 
     /* DC coefficient */
     if (a->version == 2) {
-        block[0] = 2 * get_sbits(&a->gb, 10) + 1024;
+        block[0] = 2 * bitstream_read_signed(&a->bc, 10) + 1024;
     } else {
         component = (n <= 3 ? 0 : n - 4 + 1);
-        diff = decode_dc(&a->gb, component);
+        diff = decode_dc(&a->bc, component);
         if (diff >= 0xffff)
             return AVERROR_INVALIDDATA;
         a->last_dc[component] += diff;
@@ -76,11 +78,9 @@ static inline int mdec_decode_block_intra(MDECContext *a, int16_t *block, int n)
 
     i = 0;
     {
-        OPEN_READER(re, &a->gb);
         /* now quantify & encode AC coefficients */
         for (;;) {
-            UPDATE_CACHE(re, &a->gb);
-            GET_RL_VLC(level, run, re, &a->gb, rl->rl_vlc[0], TEX_VLC_BITS, 2, 0);
+            BITSTREAM_RL_VLC(level, run, &a->bc, rl->rl_vlc[0], TEX_VLC_BITS, 2);
 
             if (level == 127) {
                 break;
@@ -93,13 +93,12 @@ static inline int mdec_decode_block_intra(MDECContext *a, int16_t *block, int n)
                 }
                 j     = scantable[i];
                 level = (level * qscale * quant_matrix[j]) >> 3;
-                level = (level ^ SHOW_SBITS(re, &a->gb, 1)) - SHOW_SBITS(re, &a->gb, 1);
-                LAST_SKIP_BITS(re, &a->gb, 1);
+                level = (level ^ bitstream_peek_signed(&a->bc, 1)) - bitstream_peek_signed(&a->bc, 1);
+                bitstream_skip(&a->bc, 1);
             } else {
                 /* escape */
-                run = SHOW_UBITS(re, &a->gb, 6)+1; LAST_SKIP_BITS(re, &a->gb, 6);
-                UPDATE_CACHE(re, &a->gb);
-                level = SHOW_SBITS(re, &a->gb, 10); SKIP_BITS(re, &a->gb, 10);
+                run = bitstream_read(&a->bc, 6) + 1;
+                level = bitstream_read_signed(&a->bc, 10);
                 i += run;
                 if (i > 63) {
                     av_log(a->avctx, AV_LOG_ERROR,
@@ -120,7 +119,6 @@ static inline int mdec_decode_block_intra(MDECContext *a, int16_t *block, int n)
 
             block[j] = level;
         }
-        CLOSE_READER(re, &a->gb);
     }
     a->block_last_index[n] = i;
     return 0;
@@ -137,7 +135,7 @@ static inline int decode_mb(MDECContext *a, int16_t block[6][64])
         if ((ret = mdec_decode_block_intra(a, block[block_index[i]],
                                            block_index[i])) < 0)
             return ret;
-        if (get_bits_left(&a->gb) < 0)
+        if (bitstream_bits_left(&a->bc) < 0)
             return AVERROR_INVALIDDATA;
     }
     return 0;
@@ -187,13 +185,13 @@ static int decode_frame(AVCodecContext *avctx,
         a->bitstream_buffer[i]     = buf[i + 1];
         a->bitstream_buffer[i + 1] = buf[i];
     }
-    init_get_bits(&a->gb, a->bitstream_buffer, buf_size * 8);
+    bitstream_init8(&a->bc, a->bitstream_buffer, buf_size);
 
     /* skip over 4 preamble bytes in stream (typically 0xXX 0xXX 0x00 0x38) */
-    skip_bits(&a->gb, 32);
+    bitstream_skip(&a->bc, 32);
 
-    a->qscale  = get_bits(&a->gb, 16);
-    a->version = get_bits(&a->gb, 16);
+    a->qscale  = bitstream_read(&a->bc, 16);
+    a->version = bitstream_read(&a->bc, 16);
 
     a->last_dc[0] = a->last_dc[1] = a->last_dc[2] = 128;
 
@@ -208,7 +206,7 @@ static int decode_frame(AVCodecContext *avctx,
 
     *got_frame = 1;
 
-    return (get_bits_count(&a->gb) + 31) / 32 * 4;
+    return (bitstream_tell(&a->bc) + 31) / 32 * 4;
 }
 
 static av_cold int decode_init(AVCodecContext *avctx)

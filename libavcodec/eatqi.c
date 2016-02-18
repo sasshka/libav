@@ -27,9 +27,9 @@
  */
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "blockdsp.h"
 #include "bswapdsp.h"
-#include "get_bits.h"
 #include "aandcttab.h"
 #include "eaidct.h"
 #include "idctdsp.h"
@@ -37,7 +37,7 @@
 #include "mpeg12.h"
 
 typedef struct TqiContext {
-    GetBitContext gb;
+    BitstreamContext bc;
     BlockDSPContext bdsp;
     BswapDSPContext bsdsp;
     IDCTDSPContext idsp;
@@ -75,7 +75,7 @@ static int tqi_decode_mb(TqiContext *t, int16_t (*block)[64])
 
     t->bdsp.clear_blocks(block[0]);
     for (n = 0; n < 6; n++) {
-        int ret = ff_mpeg1_decode_block_intra(&t->gb,
+        int ret = ff_mpeg1_decode_block_intra(&t->bc,
                                               t->intra_matrix,
                                               t->intra_scantable.permutated,
                                               t->last_dc, block[n], n, 1);
@@ -147,7 +147,8 @@ static int tqi_decode_frame(AVCodecContext *avctx,
         return AVERROR(ENOMEM);
     t->bsdsp.bswap_buf(t->bitstream_buf, (const uint32_t *) buf,
                        (buf_end - buf) / 4);
-    init_get_bits(&t->gb, t->bitstream_buf, 8 * (buf_end - buf));
+    bitstream_init8(&t->bc, t->bitstream_buf, buf_end - buf);
+
 
     t->last_dc[0] =
     t->last_dc[1] =
