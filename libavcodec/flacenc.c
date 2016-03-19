@@ -25,7 +25,6 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "bswapdsp.h"
-#include "get_bits.h"
 #include "golomb.h"
 #include "internal.h"
 #include "lpc.h"
