@@ -28,7 +28,7 @@
 #include "libavutil/attributes.h"
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "put_bits.h"
 #include "rangecoder.h"
 #include "golomb.h"
