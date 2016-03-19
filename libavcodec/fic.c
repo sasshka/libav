@@ -23,8 +23,8 @@
 
 #include "libavutil/common.h"
 #include "avcodec.h"
+#include "bitstream.h"
 #include "internal.h"
-#include "get_bits.h"
 #include "golomb.h"
 
 typedef struct FICThreadContext {
@@ -128,13 +128,13 @@ static void fic_idct_put(uint8_t *dst, int stride, int16_t *block)
         ptr += 8;
     }
 }
-static int fic_decode_block(FICContext *ctx, GetBitContext *gb,
+static int fic_decode_block(FICContext *ctx, BitstreamContext *bc,
                             uint8_t *dst, int stride, int16_t *block)
 {
     int i, num_coeff;
 
     /* Is it a skip block? */
-    if (get_bits1(gb)) {
+    if (bitstream_read_bit(bc)) {
         /* This is a P-frame. */
         ctx->frame->key_frame = 0;
         ctx->frame->pict_type = AV_PICTURE_TYPE_P;
@@ -144,12 +144,12 @@ static int fic_decode_block(FICContext *ctx, GetBitContext *gb,
 
     memset(block, 0, sizeof(*block) * 64);
 
-    num_coeff = get_bits(gb, 7);
+    num_coeff = bitstream_read(bc, 7);
     if (num_coeff > 64)
         return AVERROR_INVALIDDATA;
 
     for (i = 0; i < num_coeff; i++)
-        block[ff_zigzag_direct[i]] = get_se_golomb(gb) *
+        block[ff_zigzag_direct[i]] = get_se_golomb(bc) *
                                      ctx->qmat[ff_zigzag_direct[i]];
 
     fic_idct_put(dst, stride, block);
@@ -161,14 +161,14 @@ static int fic_decode_slice(AVCodecContext *avctx, void *tdata)
 {
     FICContext *ctx        = avctx->priv_data;
     FICThreadContext *tctx = tdata;
-    GetBitContext gb;
+    BitstreamContext bc;
     uint8_t *src = tctx->src;
     int slice_h  = tctx->slice_h;
     int src_size = tctx->src_size;
     int y_off    = tctx->y_off;
     int x, y, p;
 
-    init_get_bits(&gb, src, src_size * 8);
+    bitstream_init8(&bc, src, src_size);
 
     for (p = 0; p < 3; p++) {
         int stride   = ctx->frame->linesize[p];
@@ -178,7 +178,7 @@ static int fic_decode_slice(AVCodecContext *avctx, void *tdata)
             for (x = 0; x < (ctx->aligned_width >> !!p); x += 8) {
                 int ret;
 
-                if ((ret = fic_decode_block(ctx, &gb, dst + x, stride, tctx->block)) != 0)
+                if ((ret = fic_decode_block(ctx, &bc, dst + x, stride, tctx->block)) != 0)
                     return ret;
             }
 
