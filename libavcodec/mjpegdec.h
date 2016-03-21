@@ -33,17 +33,18 @@
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "blockdsp.h"
-#include "get_bits.h"
 #include "hpeldsp.h"
 #include "idctdsp.h"
+#include "vlc.h"
 
 #define MAX_COMPONENTS 4
 
 typedef struct MJpegDecodeContext {
     AVClass *class;
     AVCodecContext *avctx;
-    GetBitContext gb;
+    BitstreamContext bc;
 
     int start_code; /* current start code */
     int buffer_size;

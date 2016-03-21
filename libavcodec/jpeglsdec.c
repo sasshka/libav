@@ -26,7 +26,7 @@
  */
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "golomb.h"
 #include "internal.h"
 #include "mathops.h"
@@ -52,16 +52,16 @@ int ff_jpegls_decode_lse(MJpegDecodeContext *s)
 {
     int id;
 
-    skip_bits(&s->gb, 16);  /* length: FIXME: verify field validity */
-    id = get_bits(&s->gb, 8);
+    bitstream_skip(&s->bc, 16);  /* length: FIXME: verify field validity */
+    id = bitstream_read(&s->bc, 8);
 
     switch (id) {
     case 1:
-        s->maxval = get_bits(&s->gb, 16);
-        s->t1     = get_bits(&s->gb, 16);
-        s->t2     = get_bits(&s->gb, 16);
-        s->t3     = get_bits(&s->gb, 16);
-        s->reset  = get_bits(&s->gb, 16);
+        s->maxval = bitstream_read(&s->bc, 16);
+        s->t1     = bitstream_read(&s->bc, 16);
+        s->t2     = bitstream_read(&s->bc, 16);
+        s->t3     = bitstream_read(&s->bc, 16);
+        s->reset  = bitstream_read(&s->bc, 16);
 
 //        ff_jpegls_reset_coding_parameters(s, 0);
         //FIXME quant table?
@@ -85,7 +85,7 @@ int ff_jpegls_decode_lse(MJpegDecodeContext *s)
 /**
  * Get context-dependent Golomb code, decode it and update context
  */
-static inline int ls_get_code_regular(GetBitContext *gb, JLSState *state, int Q)
+static inline int ls_get_code_regular(BitstreamContext *bc, JLSState *state, int Q)
 {
     int k, ret;
 
@@ -93,10 +93,10 @@ static inline int ls_get_code_regular(GetBitContext *gb, JLSState *state, int Q)
         ;
 
 #ifdef JLS_BROKEN
-    if (!show_bits_long(gb, 32))
+    if (!bitstream_skip(bc, 32))
         return -1;
 #endif
-    ret = get_ur_golomb_jpegls(gb, k, state->limit, state->qbpp);
+    ret = get_ur_golomb_jpegls(bc, k, state->limit, state->qbpp);
 
     /* decode mapped error */
     if (ret & 1)
@@ -116,7 +116,7 @@ static inline int ls_get_code_regular(GetBitContext *gb, JLSState *state, int Q)
 /**
  * Get Golomb code, decode it and update state for run termination
  */
-static inline int ls_get_code_runterm(GetBitContext *gb, JLSState *state,
+static inline int ls_get_code_runterm(BitstreamContext *bc, JLSState *state,
                                       int RItype, int limit_add)
 {
     int k, ret, temp, map;
@@ -130,10 +130,10 @@ static inline int ls_get_code_runterm(GetBitContext *gb, JLSState *state,
         ;
 
 #ifdef JLS_BROKEN
-    if (!show_bits_long(gb, 32))
+    if (!bitstream_skip(bc, 32))
         return -1;
 #endif
-    ret = get_ur_golomb_jpegls(gb, k, state->limit - limit_add - 1,
+    ret = get_ur_golomb_jpegls(bc, k, state->limit - limit_add - 1,
                                state->qbpp);
 
     /* decode mapped error */
@@ -187,7 +187,7 @@ static inline void ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             int RItype;
 
             /* decode full runs while available */
-            while (get_bits1(&s->gb)) {
+            while (bitstream_read_bit(&s->bc)) {
                 int r;
                 r = 1 << ff_log2_run[state->run_index[comp]];
                 if (x + r * stride > w)
@@ -207,7 +207,7 @@ static inline void ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode aborted run */
             r = ff_log2_run[state->run_index[comp]];
             if (r)
-                r = get_bits_long(&s->gb, r);
+                r = bitstream_read(&s->bc, r);
             for (i = 0; i < r; i++) {
                 W(dst, x, Ra);
                 x += stride;
@@ -216,7 +216,7 @@ static inline void ls_decode_line(JLSState *state, MJpegDecodeContext *s,
             /* decode run termination value */
             Rb     = R(last, x);
             RItype = (FFABS(Ra - Rb) <= state->near) ? 1 : 0;
-            err    = ls_get_code_runterm(&s->gb, state, RItype,
+            err    = ls_get_code_runterm(&s->bc, state, RItype,
                                          ff_log2_run[state->run_index[comp]]);
             if (state->run_index[comp])
                 state->run_index[comp]--;
@@ -246,10 +246,10 @@ static inline void ls_decode_line(JLSState *state, MJpegDecodeContext *s,
 
             if (sign) {
                 pred = av_clip(pred - state->C[context], 0, state->maxval);
-                err  = -ls_get_code_regular(&s->gb, state, context);
+                err  = -ls_get_code_regular(&s->bc, state, context);
             } else {
                 pred = av_clip(pred + state->C[context], 0, state->maxval);
-                err  = ls_get_code_regular(&s->gb, state, context);
+                err  = ls_get_code_regular(&s->bc, state, context);
             }
 
             /* we have to do something more for near-lossless coding */
@@ -333,8 +333,8 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s, int near,
             cur += s->picture_ptr->linesize[0];
 
             if (s->restart_interval && !--s->restart_count) {
-                align_get_bits(&s->gb);
-                skip_bits(&s->gb, 16); /* skip RSTn */
+                bitstream_align(&s->bc);
+                bitstream_skip(&s->bc, 16); /* skip RSTn */
             }
         }
     } else if (ilv == 1) { /* line interleaving */
@@ -349,8 +349,8 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s, int near,
                 Rc[j] = last[j];
 
                 if (s->restart_interval && !--s->restart_count) {
-                    align_get_bits(&s->gb);
-                    skip_bits(&s->gb, 16); /* skip RSTn */
+                    bitstream_align(&s->bc);
+                    bitstream_skip(&s->bc, 16); /* skip RSTn */
                 }
             }
             last = cur;

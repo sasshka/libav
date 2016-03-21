@@ -31,8 +31,10 @@
 #include "mjpeg.h"
 #include "mjpegdec.h"
 
-static uint32_t read_offs(AVCodecContext *avctx, GetBitContext *gb, uint32_t size, const char *err_msg){
-    uint32_t offs= get_bits_long(gb, 32);
+static uint32_t read_offs(AVCodecContext *avctx, BitstreamContext *bc, uint32_t size,
+                          const char *err_msg)
+{
+    uint32_t offs= bitstream_read(bc, 32);
     if(offs >= size){
         av_log(avctx, AV_LOG_WARNING, err_msg, offs, size);
         return 0;
@@ -48,7 +50,7 @@ static int mjpegb_decode_frame(AVCodecContext *avctx,
     int buf_size = avpkt->size;
     MJpegDecodeContext *s = avctx->priv_data;
     const uint8_t *buf_end, *buf_ptr;
-    GetBitContext hgb; /* for the header */
+    BitstreamContext hbc; /* for the header */
     uint32_t dqt_offs, dht_offs, sof_offs, sos_offs, second_field_offs;
     uint32_t field_size, sod_offs;
     int ret;
@@ -65,62 +67,63 @@ read_header:
     if (buf_end - buf_ptr >= 1 << 28)
         return AVERROR_INVALIDDATA;
 
-    init_get_bits(&hgb, buf_ptr, /*buf_size*/(buf_end - buf_ptr)*8);
+    bitstream_init(&hbc, buf_ptr, /*buf_size*/(buf_end - buf_ptr)*8);
 
-    skip_bits(&hgb, 32); /* reserved zeros */
+    bitstream_skip(&hbc, 32); /* reserved zeros */
 
-    if (get_bits_long(&hgb, 32) != MKBETAG('m','j','p','g'))
+    if (bitstream_read(&hbc, 32) != MKBETAG('m','j','p','g'))
     {
         av_log(avctx, AV_LOG_WARNING, "not mjpeg-b (bad fourcc)\n");
         return AVERROR_INVALIDDATA;
     }
 
-    field_size = get_bits_long(&hgb, 32); /* field size */
+    field_size = bitstream_read(&hbc, 32); /* field size */
     av_log(avctx, AV_LOG_DEBUG, "field size: 0x%"PRIx32"\n", field_size);
-    skip_bits(&hgb, 32); /* padded field size */
-    second_field_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "second_field_offs is %d and size is %d\n");
+    bitstream_skip(&hbc, 32); /* padded field size */
+    second_field_offs = read_offs(avctx, &hbc, buf_end - buf_ptr,
+                                  "second_field_offs is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "second field offs: 0x%"PRIx32"\n",
            second_field_offs);
 
-    dqt_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "dqt is %d and size is %d\n");
+    dqt_offs = read_offs(avctx, &hbc, buf_end - buf_ptr, "dqt is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "dqt offs: 0x%"PRIx32"\n", dqt_offs);
     if (dqt_offs)
     {
-        init_get_bits(&s->gb, buf_ptr+dqt_offs, (buf_end - (buf_ptr+dqt_offs))*8);
+        bitstream_init(&s->bc, buf_ptr+dqt_offs, (buf_end - (buf_ptr+dqt_offs))*8);
         s->start_code = DQT;
         if (ff_mjpeg_decode_dqt(s) < 0 &&
             (avctx->err_recognition & AV_EF_EXPLODE))
           return AVERROR_INVALIDDATA;
     }
 
-    dht_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "dht is %d and size is %d\n");
+    dht_offs = read_offs(avctx, &hbc, buf_end - buf_ptr, "dht is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "dht offs: 0x%"PRIx32"\n", dht_offs);
     if (dht_offs)
     {
-        init_get_bits(&s->gb, buf_ptr+dht_offs, (buf_end - (buf_ptr+dht_offs))*8);
+        bitstream_init(&s->bc, buf_ptr+dht_offs, (buf_end - (buf_ptr+dht_offs))*8);
         s->start_code = DHT;
         ff_mjpeg_decode_dht(s);
     }
 
-    sof_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "sof is %d and size is %d\n");
+    sof_offs = read_offs(avctx, &hbc, buf_end - buf_ptr, "sof is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "sof offs: 0x%"PRIx32"\n", sof_offs);
     if (sof_offs)
     {
-        init_get_bits(&s->gb, buf_ptr+sof_offs, (buf_end - (buf_ptr+sof_offs))*8);
+        bitstream_init(&s->bc, buf_ptr+sof_offs, (buf_end - (buf_ptr+sof_offs))*8);
         s->start_code = SOF0;
         if (ff_mjpeg_decode_sof(s) < 0)
             return -1;
     }
 
-    sos_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "sos is %d and size is %d\n");
+    sos_offs = read_offs(avctx, &hbc, buf_end - buf_ptr, "sos is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "sos offs: 0x%"PRIx32"\n", sos_offs);
-    sod_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "sof is %d and size is %d\n");
+    sod_offs = read_offs(avctx, &hbc, buf_end - buf_ptr, "sof is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "sod offs: 0x%"PRIx32"\n", sod_offs);
     if (sos_offs)
     {
-        init_get_bits(&s->gb, buf_ptr + sos_offs,
+        bitstream_init(&s->bc, buf_ptr + sos_offs,
                       8 * FFMIN(field_size, buf_end - buf_ptr - sos_offs));
-        s->mjpb_skiptosod = (sod_offs - sos_offs - show_bits(&s->gb, 16));
+        s->mjpb_skiptosod = (sod_offs - sos_offs - bitstream_peek(&s->bc, 16));
         s->start_code = SOS;
         if (ff_mjpeg_decode_sos(s, NULL, NULL) < 0 &&
             (avctx->err_recognition & AV_EF_EXPLODE))
