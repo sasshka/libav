@@ -25,6 +25,7 @@
  */
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "golomb.h"
@@ -33,7 +34,7 @@
 #include "rv30data.h"
 
 
-static int rv30_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceInfo *si)
+static int rv30_parse_slice_header(RV34DecContext *r, BitstreamContext *bc, SliceInfo *si)
 {
     AVCodecContext *avctx = r->s.avctx;
     int mb_bits;
@@ -42,16 +43,16 @@ static int rv30_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceIn
     int rpr;
 
     memset(si, 0, sizeof(SliceInfo));
-    if(get_bits(gb, 3))
+    if(bitstream_read(bc, 3))
         return -1;
-    si->type = get_bits(gb, 2);
+    si->type = bitstream_read(bc, 2);
     if(si->type == 1) si->type = 0;
-    if(get_bits1(gb))
+    if(bitstream_read_bit(bc))
         return -1;
-    si->quant = get_bits(gb, 5);
-    skip_bits1(gb);
-    si->pts = get_bits(gb, 13);
-    rpr = get_bits(gb, r->rpr);
+    si->quant = bitstream_read(bc, 5);
+    bitstream_skip(bc, 1);
+    si->pts = bitstream_read(bc, 13);
+    rpr = bitstream_read(bc, r->rpr);
     if(rpr){
         if (avctx->extradata_size < rpr * 2 + 8) {
             av_log(avctx, AV_LOG_ERROR,
@@ -66,22 +67,22 @@ static int rv30_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceIn
     si->width  = w;
     si->height = h;
     mb_size = ((w + 15) >> 4) * ((h + 15) >> 4);
-    mb_bits = ff_rv34_get_start_offset(gb, mb_size);
-    si->start = get_bits(gb, mb_bits);
-    skip_bits1(gb);
+    mb_bits = ff_rv34_get_start_offset(bc, mb_size);
+    si->start = bitstream_read(bc, mb_bits);
+    bitstream_skip(bc, 1);
     return 0;
 }
 
 /**
  * Decode 4x4 intra types array.
  */
-static int rv30_decode_intra_types(RV34DecContext *r, GetBitContext *gb, int8_t *dst)
+static int rv30_decode_intra_types(RV34DecContext *r, BitstreamContext *bc, int8_t *dst)
 {
     int i, j, k;
 
     for(i = 0; i < 4; i++, dst += r->intra_types_stride - 4){
         for(j = 0; j < 4; j+= 2){
-            unsigned code = svq3_get_ue_golomb(gb) << 1;
+            unsigned code = svq3_get_ue_golomb(bc) << 1;
             if(code >= 81*2){
                 av_log(r->s.avctx, AV_LOG_ERROR, "Incorrect intra prediction code\n");
                 return -1;
@@ -108,8 +109,8 @@ static int rv30_decode_mb_info(RV34DecContext *r)
     static const int rv30_p_types[6] = { RV34_MB_SKIP, RV34_MB_P_16x16, RV34_MB_P_8x8, -1, RV34_MB_TYPE_INTRA, RV34_MB_TYPE_INTRA16x16 };
     static const int rv30_b_types[6] = { RV34_MB_SKIP, RV34_MB_B_DIRECT, RV34_MB_B_FORWARD, RV34_MB_B_BACKWARD, RV34_MB_TYPE_INTRA, RV34_MB_TYPE_INTRA16x16 };
     MpegEncContext *s = &r->s;
-    GetBitContext *gb = &s->gb;
-    unsigned code     = svq3_get_ue_golomb(gb);
+    BitstreamContext *bc = &s->bc;
+    unsigned code     = svq3_get_ue_golomb(bc);
 
     if (code > 11) {
         av_log(s->avctx, AV_LOG_ERROR, "Incorrect MB type code\n");

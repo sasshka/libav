@@ -27,9 +27,11 @@
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "golomb.h"
+#include "vlc.h"
 
 #include "rv34.h"
 #include "rv40vlc2.h"
@@ -101,15 +103,15 @@ static av_cold void rv40_init_tables(void)
  * If the width/height is the standard one then it's coded as a 3-bit index.
  * Otherwise it is coded as escaped 8-bit portions.
  */
-static int get_dimension(GetBitContext *gb, const int *dim)
+static int get_dimension(BitstreamContext *bc, const int *dim)
 {
-    int t   = get_bits(gb, 3);
+    int t   = bitstream_read(bc, 3);
     int val = dim[t];
     if(val < 0)
-        val = dim[get_bits1(gb) - val];
+        val = dim[bitstream_read_bit(bc) - val];
     if(!val){
         do{
-            t = get_bits(gb, 8);
+            t = bitstream_read(bc, 8);
             val += t << 2;
         }while(t == 0xFF);
     }
@@ -119,13 +121,13 @@ static int get_dimension(GetBitContext *gb, const int *dim)
 /**
  * Get encoded picture size - usually this is called from rv40_parse_slice_header.
  */
-static void rv40_parse_picture_size(GetBitContext *gb, int *w, int *h)
+static void rv40_parse_picture_size(BitstreamContext *bc, int *w, int *h)
 {
-    *w = get_dimension(gb, rv40_standard_widths);
-    *h = get_dimension(gb, rv40_standard_heights);
+    *w = get_dimension(bc, rv40_standard_widths);
+    *h = get_dimension(bc, rv40_standard_heights);
 }
 
-static int rv40_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceInfo *si)
+static int rv40_parse_slice_header(RV34DecContext *r, BitstreamContext *bc, SliceInfo *si)
 {
     int mb_bits;
     int w = r->s.width, h = r->s.height;
@@ -133,25 +135,25 @@ static int rv40_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceIn
     int ret;
 
     memset(si, 0, sizeof(SliceInfo));
-    if(get_bits1(gb))
+    if(bitstream_read_bit(bc))
         return AVERROR_INVALIDDATA;
-    si->type = get_bits(gb, 2);
+    si->type = bitstream_read(bc, 2);
     if(si->type == 1) si->type = 0;
-    si->quant = get_bits(gb, 5);
-    if(get_bits(gb, 2))
+    si->quant = bitstream_read(bc, 5);
+    if(bitstream_read(bc, 2))
         return AVERROR_INVALIDDATA;
-    si->vlc_set = get_bits(gb, 2);
-    skip_bits1(gb);
-    si->pts = get_bits(gb, 13);
-    if(!si->type || !get_bits1(gb))
-        rv40_parse_picture_size(gb, &w, &h);
+    si->vlc_set = bitstream_read(bc, 2);
+    bitstream_skip(bc, 1);
+    si->pts = bitstream_read(bc, 13);
+    if(!si->type || !bitstream_read_bit(bc))
+        rv40_parse_picture_size(bc, &w, &h);
     if ((ret = av_image_check_size(w, h, 0, r->s.avctx)) < 0)
         return ret;
     si->width  = w;
     si->height = h;
     mb_size = ((w + 15) >> 4) * ((h + 15) >> 4);
-    mb_bits = ff_rv34_get_start_offset(gb, mb_size);
-    si->start = get_bits(gb, mb_bits);
+    mb_bits = ff_rv34_get_start_offset(bc, mb_size);
+    si->start = bitstream_read(bc, mb_bits);
 
     return 0;
 }
@@ -159,7 +161,7 @@ static int rv40_parse_slice_header(RV34DecContext *r, GetBitContext *gb, SliceIn
 /**
  * Decode 4x4 intra types array.
  */
-static int rv40_decode_intra_types(RV34DecContext *r, GetBitContext *gb, int8_t *dst)
+static int rv40_decode_intra_types(RV34DecContext *r, BitstreamContext *bc, int8_t *dst)
 {
     MpegEncContext *s = &r->s;
     int i, j, k, v;
@@ -169,7 +171,7 @@ static int rv40_decode_intra_types(RV34DecContext *r, GetBitContext *gb, int8_t 
 
     for(i = 0; i < 4; i++, dst += r->intra_types_stride){
         if(!i && s->first_slice_line){
-            pattern = get_vlc2(gb, aic_top_vlc.table, AIC_TOP_BITS, 1);
+            pattern = bitstream_read_vlc(bc, aic_top_vlc.table, AIC_TOP_BITS, 1);
             dst[0] = (pattern >> 2) & 2;
             dst[1] = (pattern >> 1) & 2;
             dst[2] =  pattern       & 2;
@@ -192,23 +194,23 @@ static int rv40_decode_intra_types(RV34DecContext *r, GetBitContext *gb, int8_t 
                 if(pattern == rv40_aic_table_index[k])
                     break;
             if(j < 3 && k < MODE2_PATTERNS_NUM){ //pattern is found, decoding 2 coefficients
-                v = get_vlc2(gb, aic_mode2_vlc[k].table, AIC_MODE2_BITS, 2);
+                v = bitstream_read_vlc(bc, aic_mode2_vlc[k].table, AIC_MODE2_BITS, 2);
                 *ptr++ = v/9;
                 *ptr++ = v%9;
                 j++;
             }else{
                 if(B != -1 && C != -1)
-                    v = get_vlc2(gb, aic_mode1_vlc[B + C*10].table, AIC_MODE1_BITS, 1);
+                    v = bitstream_read_vlc(bc, aic_mode1_vlc[B + C*10].table, AIC_MODE1_BITS, 1);
                 else{ // tricky decoding
                     v = 0;
                     switch(C){
                     case -1: // code 0 -> 1, 1 -> 0
                         if(B < 2)
-                            v = get_bits1(gb) ^ 1;
+                            v = bitstream_read_bit(bc) ^ 1;
                         break;
                     case  0:
                     case  2: // code 0 -> 2, 1 -> 0
-                        v = (get_bits1(gb) ^ 1) << 1;
+                        v = (bitstream_read_bit(bc) ^ 1) << 1;
                         break;
                     }
                 }
@@ -225,13 +227,13 @@ static int rv40_decode_intra_types(RV34DecContext *r, GetBitContext *gb, int8_t 
 static int rv40_decode_mb_info(RV34DecContext *r)
 {
     MpegEncContext *s = &r->s;
-    GetBitContext *gb = &s->gb;
+    BitstreamContext *bc = &s->bc;
     int q, i;
     int prev_type = 0;
     int mb_pos = s->mb_x + s->mb_y * s->mb_stride;
 
     if(!r->s.mb_skip_run)
-        r->s.mb_skip_run = svq3_get_ue_golomb(gb) + 1;
+        r->s.mb_skip_run = svq3_get_ue_golomb(bc) + 1;
 
     if(--r->s.mb_skip_run)
          return RV34_MB_SKIP;
@@ -259,17 +261,17 @@ static int rv40_decode_mb_info(RV34DecContext *r)
 
     if(s->pict_type == AV_PICTURE_TYPE_P){
         prev_type = block_num_to_ptype_vlc_num[prev_type];
-        q = get_vlc2(gb, ptype_vlc[prev_type].table, PTYPE_VLC_BITS, 1);
+        q = bitstream_read_vlc(bc, ptype_vlc[prev_type].table, PTYPE_VLC_BITS, 1);
         if(q < PBTYPE_ESCAPE)
             return q;
-        q = get_vlc2(gb, ptype_vlc[prev_type].table, PTYPE_VLC_BITS, 1);
+        q = bitstream_read_vlc(bc, ptype_vlc[prev_type].table, PTYPE_VLC_BITS, 1);
         av_log(s->avctx, AV_LOG_ERROR, "Dquant for P-frame\n");
     }else{
         prev_type = block_num_to_btype_vlc_num[prev_type];
-        q = get_vlc2(gb, btype_vlc[prev_type].table, BTYPE_VLC_BITS, 1);
+        q = bitstream_read_vlc(bc, btype_vlc[prev_type].table, BTYPE_VLC_BITS, 1);
         if(q < PBTYPE_ESCAPE)
             return q;
-        q = get_vlc2(gb, btype_vlc[prev_type].table, BTYPE_VLC_BITS, 1);
+        q = bitstream_read_vlc(bc, btype_vlc[prev_type].table, BTYPE_VLC_BITS, 1);
         av_log(s->avctx, AV_LOG_ERROR, "Dquant for B-frame\n");
     }
     return 0;

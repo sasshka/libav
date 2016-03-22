@@ -30,6 +30,7 @@
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "error_resilience.h"
 #include "h263.h"
 #include "h263data.h"
@@ -40,6 +41,7 @@
 #include "mpeg4video.h"
 #include "mpegvideodata.h"
 #include "rv10.h"
+#include "vlc.h"
 
 #define RV_GET_MAJOR_VER(x)  ((x) >> 28)
 #define RV_GET_MINOR_VER(x) (((x) >> 20) & 0xFF)
@@ -200,39 +202,39 @@ int ff_rv_decode_dc(MpegEncContext *s, int n)
     int code;
 
     if (n < 4) {
-        code = get_vlc2(&s->gb, rv_dc_lum.table, DC_VLC_BITS, 2);
+        code = bitstream_read_vlc(&s->bc, rv_dc_lum.table, DC_VLC_BITS, 2);
         if (code < 0) {
             /* XXX: I don't understand why they use LONGER codes than
              * necessary. The following code would be completely useless
              * if they had thought about it !!! */
-            code = get_bits(&s->gb, 7);
+            code = bitstream_read(&s->bc, 7);
             if (code == 0x7c) {
-                code = (int8_t) (get_bits(&s->gb, 7) + 1);
+                code = (int8_t) (bitstream_read(&s->bc, 7) + 1);
             } else if (code == 0x7d) {
-                code = -128 + get_bits(&s->gb, 7);
+                code = -128 + bitstream_read(&s->bc, 7);
             } else if (code == 0x7e) {
-                if (get_bits1(&s->gb) == 0)
-                    code = (int8_t) (get_bits(&s->gb, 8) + 1);
+                if (bitstream_read_bit(&s->bc) == 0)
+                    code = (int8_t) (bitstream_read(&s->bc, 8) + 1);
                 else
-                    code = (int8_t) (get_bits(&s->gb, 8));
+                    code = (int8_t) (bitstream_read(&s->bc, 8));
             } else if (code == 0x7f) {
-                skip_bits(&s->gb, 11);
+                bitstream_skip(&s->bc, 11);
                 code = 1;
             }
         } else {
             code -= 128;
         }
     } else {
-        code = get_vlc2(&s->gb, rv_dc_chrom.table, DC_VLC_BITS, 2);
+        code = bitstream_read_vlc(&s->bc, rv_dc_chrom.table, DC_VLC_BITS, 2);
         /* same remark */
         if (code < 0) {
-            code = get_bits(&s->gb, 9);
+            code = bitstream_read(&s->bc, 9);
             if (code == 0x1fc) {
-                code = (int8_t) (get_bits(&s->gb, 7) + 1);
+                code = (int8_t) (bitstream_read(&s->bc, 7) + 1);
             } else if (code == 0x1fd) {
-                code = -128 + get_bits(&s->gb, 7);
+                code = -128 + bitstream_read(&s->bc, 7);
             } else if (code == 0x1fe) {
-                skip_bits(&s->gb, 9);
+                bitstream_skip(&s->bc, 9);
                 code = 1;
             } else {
                 av_log(s->avctx, AV_LOG_ERROR, "chroma dc error\n");
@@ -250,9 +252,9 @@ static int rv10_decode_picture_header(MpegEncContext *s)
 {
     int mb_count, pb_frame, marker, mb_xy;
 
-    marker = get_bits1(&s->gb);
+    marker = bitstream_read_bit(&s->bc);
 
-    if (get_bits1(&s->gb))
+    if (bitstream_read_bit(&s->bc))
         s->pict_type = AV_PICTURE_TYPE_P;
     else
         s->pict_type = AV_PICTURE_TYPE_I;
@@ -260,7 +262,7 @@ static int rv10_decode_picture_header(MpegEncContext *s)
     if (!marker)
         av_log(s->avctx, AV_LOG_ERROR, "marker missing\n");
 
-    pb_frame = get_bits1(&s->gb);
+    pb_frame = bitstream_read_bit(&s->bc);
 
     ff_dlog(s->avctx, "pict_type=%d pb_frame=%d\n", s->pict_type, pb_frame);
 
@@ -269,7 +271,7 @@ static int rv10_decode_picture_header(MpegEncContext *s)
         return AVERROR_PATCHWELCOME;
     }
 
-    s->qscale = get_bits(&s->gb, 5);
+    s->qscale = bitstream_read(&s->bc, 5);
     if (s->qscale == 0) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid qscale value: 0\n");
         return AVERROR_INVALIDDATA;
@@ -278,9 +280,9 @@ static int rv10_decode_picture_header(MpegEncContext *s)
     if (s->pict_type == AV_PICTURE_TYPE_I) {
         if (s->rv10_version == 3) {
             /* specific MPEG like DC coding not used */
-            s->last_dc[0] = get_bits(&s->gb, 8);
-            s->last_dc[1] = get_bits(&s->gb, 8);
-            s->last_dc[2] = get_bits(&s->gb, 8);
+            s->last_dc[0] = bitstream_read(&s->bc, 8);
+            s->last_dc[1] = bitstream_read(&s->bc, 8);
+            s->last_dc[2] = bitstream_read(&s->bc, 8);
             ff_dlog(s->avctx, "DC:%d %d %d\n", s->last_dc[0],
                     s->last_dc[1], s->last_dc[2]);
         }
@@ -289,16 +291,16 @@ static int rv10_decode_picture_header(MpegEncContext *s)
      * to display the macroblocks is coded here */
 
     mb_xy = s->mb_x + s->mb_y * s->mb_width;
-    if (show_bits(&s->gb, 12) == 0 || (mb_xy && mb_xy < s->mb_num)) {
-        s->mb_x  = get_bits(&s->gb, 6); /* mb_x */
-        s->mb_y  = get_bits(&s->gb, 6); /* mb_y */
-        mb_count = get_bits(&s->gb, 12);
+    if (bitstream_peek(&s->bc, 12) == 0 || (mb_xy && mb_xy < s->mb_num)) {
+        s->mb_x  = bitstream_read(&s->bc, 6); /* mb_x */
+        s->mb_y  = bitstream_read(&s->bc, 6); /* mb_y */
+        mb_count = bitstream_read(&s->bc, 12);
     } else {
         s->mb_x  = 0;
         s->mb_y  = 0;
         mb_count = s->mb_width * s->mb_height;
     }
-    skip_bits(&s->gb, 3);   /* ignored */
+    bitstream_skip(&s->bc, 3);   /* ignored */
     s->f_code          = 1;
     s->unrestricted_mv = 1;
 
@@ -311,7 +313,7 @@ static int rv20_decode_picture_header(RVDecContext *rv)
     int seq, mb_pos, i, ret;
     int rpr_bits;
 
-    i = get_bits(&s->gb, 2);
+    i = bitstream_read(&s->bc, 2);
     switch (i) {
     case 0:
         s->pict_type = AV_PICTURE_TYPE_I;
@@ -335,31 +337,31 @@ static int rv20_decode_picture_header(RVDecContext *rv)
         return AVERROR_INVALIDDATA;
     }
 
-    if (get_bits1(&s->gb)) {
+    if (bitstream_read_bit(&s->bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "reserved bit set\n");
         return AVERROR_INVALIDDATA;
     }
 
-    s->qscale = get_bits(&s->gb, 5);
+    s->qscale = bitstream_read(&s->bc, 5);
     if (s->qscale == 0) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid qscale value: 0\n");
         return AVERROR_INVALIDDATA;
     }
 
     if (RV_GET_MINOR_VER(rv->sub_id) >= 2)
-        s->loop_filter = get_bits1(&s->gb);
+        s->loop_filter = bitstream_read_bit(&s->bc);
 
     if (RV_GET_MINOR_VER(rv->sub_id) <= 1)
-        seq = get_bits(&s->gb, 8) << 7;
+        seq = bitstream_read(&s->bc, 8) << 7;
     else
-        seq = get_bits(&s->gb, 13) << 2;
+        seq = bitstream_read(&s->bc, 13) << 2;
 
     rpr_bits = s->avctx->extradata[1] & 7;
     if (rpr_bits) {
         int f, new_w, new_h;
         rpr_bits = FFMIN((rpr_bits >> 1) + 1, 3);
 
-        f = get_bits(&s->gb, rpr_bits);
+        f = bitstream_read(&s->bc, rpr_bits);
 
         if (f) {
             if (s->avctx->extradata_size < 8 + 2 * f) {
@@ -420,11 +422,11 @@ static int rv20_decode_picture_header(RVDecContext *rv)
         }
     }
 
-    s->no_rounding = get_bits1(&s->gb);
+    s->no_rounding = bitstream_read_bit(&s->bc);
 
     if (RV_GET_MINOR_VER(rv->sub_id) <= 1 && s->pict_type == AV_PICTURE_TYPE_B)
         // binary decoder reads 3+2 bits here but they don't seem to be used
-        skip_bits(&s->gb, 5);
+        bitstream_skip(&s->bc, 5);
 
     s->f_code          = 1;
     s->unrestricted_mv = 1;
@@ -539,7 +541,7 @@ static int rv10_decode_packet(AVCodecContext *avctx, const uint8_t *buf,
     int mb_count, mb_pos, left, start_mb_x, active_bits_size, ret;
 
     active_bits_size = buf_size * 8;
-    init_get_bits(&s->gb, buf, FFMAX(buf_size, buf_size2) * 8);
+    bitstream_init8(&s->bc, buf, FFMAX(buf_size, buf_size2));
     if (s->codec_id == AV_CODEC_ID_RV10)
         mb_count = rv10_decode_picture_header(s);
     else
@@ -627,23 +629,23 @@ static int rv10_decode_packet(AVCodecContext *avctx, const uint8_t *buf,
         // Repeat the slice end check from ff_h263_decode_mb with our active
         // bitstream size
         if (ret != SLICE_ERROR) {
-            int v = show_bits(&s->gb, 16);
+            int v = bitstream_peek(&s->bc, 16);
 
-            if (get_bits_count(&s->gb) + 16 > active_bits_size)
-                v >>= get_bits_count(&s->gb) + 16 - active_bits_size;
+            if (bitstream_tell(&s->bc) + 16 > active_bits_size)
+                v >>= bitstream_tell(&s->bc) + 16 - active_bits_size;
 
             if (!v)
                 ret = SLICE_END;
         }
-        if (ret != SLICE_ERROR && active_bits_size < get_bits_count(&s->gb) &&
-            8 * buf_size2 >= get_bits_count(&s->gb)) {
+        if (ret != SLICE_ERROR && active_bits_size < bitstream_tell(&s->bc) &&
+            8 * buf_size2 >= bitstream_tell(&s->bc)) {
             active_bits_size = buf_size2 * 8;
             av_log(avctx, AV_LOG_DEBUG, "update size from %d to %d\n",
                    8 * buf_size, active_bits_size);
             ret = SLICE_OK;
         }
 
-        if (ret == SLICE_ERROR || active_bits_size < get_bits_count(&s->gb)) {
+        if (ret == SLICE_ERROR || active_bits_size < bitstream_tell(&s->bc)) {
             av_log(s->avctx, AV_LOG_ERROR, "ERROR at MB %d %d\n", s->mb_x,
                    s->mb_y);
             return AVERROR_INVALIDDATA;

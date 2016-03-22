@@ -28,7 +28,9 @@
 #define AVCODEC_RV34_H
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "mpegvideo.h"
+#include "vlc.h"
 
 #include "h264pred.h"
 #include "rv34dsp.h"
@@ -121,16 +123,16 @@ typedef struct RV34DecContext{
     uint8_t *tmp_b_block_uv[4];
     uint8_t *tmp_b_block_base;
 
-    int (*parse_slice_header)(struct RV34DecContext *r, GetBitContext *gb, SliceInfo *si);
+    int (*parse_slice_header)(struct RV34DecContext *r, BitstreamContext *bc, SliceInfo *si);
     int (*decode_mb_info)(struct RV34DecContext *r);
-    int (*decode_intra_types)(struct RV34DecContext *r, GetBitContext *gb, int8_t *dst);
+    int (*decode_intra_types)(struct RV34DecContext *r, BitstreamContext *bc, int8_t *dst);
     void (*loop_filter)(struct RV34DecContext *r, int row);
 }RV34DecContext;
 
 /**
  * common decoding functions
  */
-int ff_rv34_get_start_offset(GetBitContext *gb, int blocks);
+int ff_rv34_get_start_offset(BitstreamContext *bc, int blocks);
 int ff_rv34_decode_init(AVCodecContext *avctx);
 int ff_rv34_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt);
 int ff_rv34_decode_end(AVCodecContext *avctx);
