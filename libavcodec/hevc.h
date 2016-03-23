@@ -30,9 +30,9 @@
 #include "libavutil/md5.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "bswapdsp.h"
 #include "cabac.h"
-#include "get_bits.h"
 #include "h2645_parse.h"
 #include "hevcdsp.h"
 #include "internal.h"
@@ -725,7 +725,7 @@ typedef struct HEVCLocalContext {
 
     uint8_t first_qp_group;
 
-    GetBitContext gb;
+    BitstreamContext bc;
     CABACContext cc;
 
     int8_t qp_y;
@@ -859,7 +859,7 @@ typedef struct HEVCContext {
     int sei_hflip, sei_vflip;
 } HEVCContext;
 
-int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
+int ff_hevc_decode_short_term_rps(BitstreamContext *bc, AVCodecContext *avctx,
                                   ShortTermRPS *rps, const HEVCSPS *sps, int is_slice_header);
 
 /**
@@ -871,14 +871,14 @@ int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
  * @param vps_list if non-NULL, this function will validate that the SPS refers
  *                 to an existing VPS
  */
-int ff_hevc_parse_sps(HEVCSPS *sps, GetBitContext *gb, unsigned int *sps_id,
+int ff_hevc_parse_sps(HEVCSPS *sps, BitstreamContext *bc, unsigned int *sps_id,
                       int apply_defdispwin, AVBufferRef **vps_list, AVCodecContext *avctx);
 
-int ff_hevc_decode_nal_vps(GetBitContext *gb, AVCodecContext *avctx,
+int ff_hevc_decode_nal_vps(BitstreamContext *bc, AVCodecContext *avctx,
                            HEVCParamSets *ps);
-int ff_hevc_decode_nal_sps(GetBitContext *gb, AVCodecContext *avctx,
+int ff_hevc_decode_nal_sps(BitstreamContext *bc, AVCodecContext *avctx,
                            HEVCParamSets *ps, int apply_defdispwin);
-int ff_hevc_decode_nal_pps(GetBitContext *gb, AVCodecContext *avctx,
+int ff_hevc_decode_nal_pps(BitstreamContext *bc, AVCodecContext *avctx,
                            HEVCParamSets *ps);
 int ff_hevc_decode_nal_sei(HEVCContext *s);
 

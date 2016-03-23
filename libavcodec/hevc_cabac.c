@@ -24,6 +24,7 @@
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
 
+#include "bitstream.h"
 #include "cabac_functions.h"
 #include "hevc.h"
 
@@ -345,12 +346,12 @@ static void cabac_reinit(HEVCLocalContext *lc)
 
 static void cabac_init_decoder(HEVCContext *s)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
-    skip_bits(gb, 1);
-    align_get_bits(gb);
+    BitstreamContext *bc = &s->HEVClc.bc;
+    bitstream_skip(bc, 1);
+    bitstream_align(bc);
     ff_init_cabac_decoder(&s->HEVClc.cc,
-                          gb->buffer + get_bits_count(gb) / 8,
-                          (get_bits_left(gb) + 7) / 8);
+                          bc->buffer + bitstream_tell(bc) / 8,
+                          (bitstream_bits_left(bc) + 7) / 8);
 }
 
 static void cabac_init_state(HEVCContext *s)

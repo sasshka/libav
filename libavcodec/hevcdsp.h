@@ -23,7 +23,7 @@
 #ifndef AVCODEC_HEVCDSP_H
 #define AVCODEC_HEVCDSP_H
 
-#include "get_bits.h"
+#include "bitstream.h"
 
 typedef struct SAOParams {
     int offset_abs[3][4];   ///< sao_offset_abs
@@ -40,7 +40,7 @@ typedef struct SAOParams {
 
 typedef struct HEVCDSPContext {
     void (*put_pcm)(uint8_t *dst, ptrdiff_t stride, int size,
-                    GetBitContext *gb, int pcm_bit_depth);
+                    BitstreamContext *bc, int pcm_bit_depth);
 
     void (*transquant_bypass[4])(uint8_t *dst, int16_t *coeffs,
                                  ptrdiff_t stride);

@@ -20,13 +20,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "get_bits.h"
+#include "bitstream.h"
 #include "hevc.h"
 
 #include "bit_depth_template.c"
 
 static void FUNC(put_pcm)(uint8_t *_dst, ptrdiff_t stride, int size,
-                          GetBitContext *gb, int pcm_bit_depth)
+                          BitstreamContext *bc, int pcm_bit_depth)
 {
     int x, y;
     pixel *dst = (pixel *)_dst;
@@ -35,7 +35,7 @@ static void FUNC(put_pcm)(uint8_t *_dst, ptrdiff_t stride, int size,
 
     for (y = 0; y < size; y++) {
         for (x = 0; x < size; x++)
-            dst[x] = get_bits(gb, pcm_bit_depth) << (BIT_DEPTH - pcm_bit_depth);
+            dst[x] = bitstream_read(bc, pcm_bit_depth) << (BIT_DEPTH - pcm_bit_depth);
         dst += stride;
     }
 }

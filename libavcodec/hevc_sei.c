@@ -22,6 +22,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "golomb.h"
 #include "hevc.h"
 
@@ -56,20 +57,20 @@ enum HEVC_SEI_TYPE {
 static int decode_nal_sei_decoded_picture_hash(HEVCContext *s)
 {
     int cIdx, i;
-    GetBitContext *gb = &s->HEVClc.gb;
-    uint8_t hash_type = get_bits(gb, 8);
+    BitstreamContext *bc = &s->HEVClc.bc;
+    uint8_t hash_type = bitstream_read(bc, 8);
 
     for (cIdx = 0; cIdx < 3; cIdx++) {
         if (hash_type == 0) {
             s->is_md5 = 1;
             for (i = 0; i < 16; i++)
-                s->md5[cIdx][i] = get_bits(gb, 8);
+                s->md5[cIdx][i] = bitstream_read(bc, 8);
         } else if (hash_type == 1) {
-            // picture_crc = get_bits(gb, 16);
-            skip_bits(gb, 16);
+            // picture_crc = bitstream_read(bc, 16);
+            bitstream_skip(bc, 16);
         } else if (hash_type == 2) {
-            // picture_checksum = get_bits(gb, 32);
-            skip_bits(gb, 32);
+            // picture_checksum = bitstream_read(bc, 32);
+            bitstream_skip(bc, 32);
         }
     }
     return 0;
@@ -77,42 +78,42 @@ static int decode_nal_sei_decoded_picture_hash(HEVCContext *s)
 
 static int decode_nal_sei_frame_packing_arrangement(HEVCContext *s)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
+    BitstreamContext *bc = &s->HEVClc.bc;
 
-    get_ue_golomb(gb);                  // frame_packing_arrangement_id
-    s->sei_frame_packing_present = !get_bits1(gb);
+    get_ue_golomb(bc);                  // frame_packing_arrangement_id
+    s->sei_frame_packing_present = !bitstream_read_bit(bc);
 
     if (s->sei_frame_packing_present) {
-        s->frame_packing_arrangement_type = get_bits(gb, 7);
-        s->quincunx_subsampling           = get_bits1(gb);
-        s->content_interpretation_type    = get_bits(gb, 6);
+        s->frame_packing_arrangement_type = bitstream_read(bc, 7);
+        s->quincunx_subsampling           = bitstream_read_bit(bc);
+        s->content_interpretation_type    = bitstream_read(bc, 6);
 
         // the following skips spatial_flipping_flag frame0_flipped_flag
         // field_views_flag current_frame_is_frame0_flag
         // frame0_self_contained_flag frame1_self_contained_flag
-        skip_bits(gb, 6);
+        bitstream_skip(bc, 6);
 
         if (!s->quincunx_subsampling && s->frame_packing_arrangement_type != 5)
-            skip_bits(gb, 16);  // frame[01]_grid_position_[xy]
-        skip_bits(gb, 8);       // frame_packing_arrangement_reserved_byte
-        skip_bits1(gb);         // frame_packing_arrangement_persistence_flag
+            bitstream_skip(bc, 16);  // frame[01]_grid_position_[xy]
+        bitstream_skip(bc, 8);       // frame_packing_arrangement_reserved_byte
+        bitstream_skip(bc, 1);       // frame_packing_arrangement_persistance_flag
     }
-    skip_bits1(gb);             // upsampled_aspect_ratio_flag
+    bitstream_skip(bc, 1);           // upsampled_aspect_ratio_flag
     return 0;
 }
 
 static int decode_nal_sei_display_orientation(HEVCContext *s)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
+    BitstreamContext *bc = &s->HEVClc.bc;
 
-    s->sei_display_orientation_present = !get_bits1(gb);
+    s->sei_display_orientation_present = !bitstream_read_bit(bc);
 
     if (s->sei_display_orientation_present) {
-        s->sei_hflip = get_bits1(gb);     // hor_flip
-        s->sei_vflip = get_bits1(gb);     // ver_flip
+        s->sei_hflip = bitstream_read_bit(bc);     // hor_flip
+        s->sei_vflip = bitstream_read_bit(bc);     // ver_flip
 
-        s->sei_anticlockwise_rotation = get_bits(gb, 16);
-        skip_bits1(gb);     // display_orientation_persistence_flag
+        s->sei_anticlockwise_rotation = bitstream_read(bc, 16);
+        bitstream_skip(bc, 1);     // display_orientation_persistence_flag
     }
 
     return 0;
@@ -120,7 +121,7 @@ static int decode_nal_sei_display_orientation(HEVCContext *s)
 
 static int decode_nal_sei_prefix(HEVCContext *s, int type, int size)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
+    BitstreamContext *bc = &s->HEVClc.bc;
 
     switch (type) {
     case 256:  // Mismatched value from HM 8.1
@@ -131,28 +132,28 @@ static int decode_nal_sei_prefix(HEVCContext *s, int type, int size)
         return decode_nal_sei_display_orientation(s);
     default:
         av_log(s->avctx, AV_LOG_DEBUG, "Skipped PREFIX SEI %d\n", type);
-        skip_bits_long(gb, 8 * size);
+        bitstream_skip(bc, 8 * size);
         return 0;
     }
 }
 
 static int decode_nal_sei_suffix(HEVCContext *s, int type, int size)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
+    BitstreamContext *bc = &s->HEVClc.bc;
 
     switch (type) {
     case SEI_TYPE_DECODED_PICTURE_HASH:
         return decode_nal_sei_decoded_picture_hash(s);
     default:
         av_log(s->avctx, AV_LOG_DEBUG, "Skipped SUFFIX SEI %d\n", type);
-        skip_bits_long(gb, 8 * size);
+        bitstream_skip(bc, 8 * size);
         return 0;
     }
 }
 
 static int decode_nal_sei_message(HEVCContext *s)
 {
-    GetBitContext *gb = &s->HEVClc.gb;
+    BitstreamContext *bc = &s->HEVClc.bc;
 
     int payload_type = 0;
     int payload_size = 0;
@@ -160,12 +161,12 @@ static int decode_nal_sei_message(HEVCContext *s)
     av_log(s->avctx, AV_LOG_DEBUG, "Decoding SEI\n");
 
     while (byte == 0xFF) {
-        byte          = get_bits(gb, 8);
+        byte          = bitstream_read(bc, 8);
         payload_type += byte;
     }
     byte = 0xFF;
     while (byte == 0xFF) {
-        byte          = get_bits(gb, 8);
+        byte          = bitstream_read(bc, 8);
         payload_size += byte;
     }
     if (s->nal_unit_type == NAL_SEI_PREFIX) {
@@ -176,15 +177,15 @@ static int decode_nal_sei_message(HEVCContext *s)
     return 0;
 }
 
-static int more_rbsp_data(GetBitContext *gb)
+static int more_rbsp_data(BitstreamContext *bc)
 {
-    return get_bits_left(gb) > 0 && show_bits(gb, 8) != 0x80;
+    return bitstream_bits_left(bc) > 0 && bitstream_peek(bc, 8) != 0x80;
 }
 
 int ff_hevc_decode_nal_sei(HEVCContext *s)
 {
     do {
         decode_nal_sei_message(s);
-    } while (more_rbsp_data(&s->HEVClc.gb));
+    } while (more_rbsp_data(&s->HEVClc.bc));
     return 0;
 }
