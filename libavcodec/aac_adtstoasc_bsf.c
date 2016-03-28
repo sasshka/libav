@@ -21,9 +21,9 @@
 
 #include "avcodec.h"
 #include "aacadtsdec.h"
+#include "bitstream.h"
 #include "bsf.h"
 #include "put_bits.h"
-#include "get_bits.h"
 #include "mpeg4audio.h"
 #include "internal.h"
 
@@ -39,7 +39,7 @@ static int aac_adtstoasc_filter(AVBSFContext *bsfc, AVPacket *out)
 {
     AACBSFContext *ctx = bsfc->priv_data;
 
-    GetBitContext gb;
+    BitstreamContext bc;
     PutBitContext pb;
     AACADTSHeaderInfo hdr;
     AVPacket *in;
@@ -52,12 +52,12 @@ static int aac_adtstoasc_filter(AVBSFContext *bsfc, AVPacket *out)
     if (in->size < AAC_ADTS_HEADER_SIZE)
         goto packet_too_small;
 
-    init_get_bits(&gb, in->data, AAC_ADTS_HEADER_SIZE * 8);
+    bitstream_init8(&bc, in->data, AAC_ADTS_HEADER_SIZE);
 
-    if (bsfc->par_in->extradata && show_bits(&gb, 12) != 0xfff)
+    if (bsfc->par_in->extradata && bitstream_read(&bc, 12) != 0xfff)
         goto finish;
 
-    if (avpriv_aac_parse_header(&gb, &hdr) < 0) {
+    if (avpriv_aac_parse_header(&bc, &hdr) < 0) {
         av_log(bsfc, AV_LOG_ERROR, "Error parsing ADTS frame header!\n");
         ret = AVERROR_INVALIDDATA;
         goto fail;
@@ -81,8 +81,8 @@ static int aac_adtstoasc_filter(AVBSFContext *bsfc, AVPacket *out)
         uint8_t       *extradata;
 
         if (!hdr.chan_config) {
-            init_get_bits(&gb, in->data, in->size * 8);
-            if (get_bits(&gb, 3) != 5) {
+            bitstream_init8(&bc, in->data, in->size);
+            if (bitstream_read(&bc, 3) != 5) {
                 avpriv_report_missing_feature(bsfc,
                                               "PCE-based channel configuration "
                                               "without PCE as first syntax "
@@ -91,10 +91,10 @@ static int aac_adtstoasc_filter(AVBSFContext *bsfc, AVPacket *out)
                 goto fail;
             }
             init_put_bits(&pb, pce_data, MAX_PCE_SIZE);
-            pce_size = avpriv_copy_pce_data(&pb, &gb)/8;
+            pce_size = avpriv_copy_pce_data(&pb, &bc)/8;
             flush_put_bits(&pb);
-            in->size -= get_bits_count(&gb)/8;
-            in->data += get_bits_count(&gb)/8;
+            in->size -= bitstream_tell(&bc)/8;
+            in->data += bitstream_tell(&bc)/8;
         }
 
         extradata = av_packet_new_side_data(in, AV_PKT_DATA_NEW_EXTRADATA,

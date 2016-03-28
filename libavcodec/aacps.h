@@ -26,7 +26,7 @@
 
 #include "aacpsdsp.h"
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 
 #define PS_MAX_NUM_ENV 5
 #define PS_MAX_NR_IIDICC 34
@@ -78,7 +78,7 @@ typedef struct PSContext {
 
 void ff_ps_init(void);
 void ff_ps_ctx_init(PSContext *ps);
-int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb, PSContext *ps, int bits_left);
+int ff_ps_read_data(AVCodecContext *avctx, BitstreamContext *bc, PSContext *ps, int bits_left);
 int ff_ps_apply(AVCodecContext *avctx, PSContext *ps, float L[2][38][64], float R[2][38][64], int top);
 
 #endif /* AVCODEC_PS_H */

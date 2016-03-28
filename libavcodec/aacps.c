@@ -24,7 +24,6 @@
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
 #include "avcodec.h"
-#include "get_bits.h"
 #include "aacps.h"
 #include "aacps_tablegen.h"
 #include "aacpsdata.c"
@@ -77,13 +76,13 @@ static VLC vlc_ps[10];
  * bitstream. \
  * \
  * @param avctx contains the current codec context \
- * @param gb    pointer to the input bitstream \
+ * @param bc    pointer to the input bitstream \
  * @param ps    pointer to the Parametric Stereo context \
  * @param PAR   pointer to the parameter to be read \
  * @param e     envelope to decode \
  * @param dt    1: time delta-coded, 0: frequency delta-coded \
  */ \
-static int read_ ## PAR ## _data(AVCodecContext *avctx, GetBitContext *gb, PSContext *ps, \
+static int read_ ## PAR ## _data(AVCodecContext *avctx, BitstreamContext *bc, PSContext *ps, \
                         int8_t (*PAR)[PS_MAX_NR_IIDICC], int table_idx, int e, int dt) \
 { \
     int b, num = ps->nr_ ## PAR ## _par; \
@@ -92,7 +91,7 @@ static int read_ ## PAR ## _data(AVCodecContext *avctx, GetBitContext *gb, PSCon
         int e_prev = e ? e - 1 : ps->num_env_old - 1; \
         e_prev = FFMAX(e_prev, 0); \
         for (b = 0; b < num; b++) { \
-            int val = PAR[e_prev][b] + get_vlc2(gb, vlc_table, 9, 3) - OFFSET; \
+            int val = PAR[e_prev][b] + bitstream_read_vlc(bc, vlc_table, 9, 3) - OFFSET; \
             if (MASK) val &= MASK; \
             PAR[e][b] = val; \
             if (ERR_CONDITION) \
@@ -101,7 +100,7 @@ static int read_ ## PAR ## _data(AVCodecContext *avctx, GetBitContext *gb, PSCon
     } else { \
         int val = 0; \
         for (b = 0; b < num; b++) { \
-            val += get_vlc2(gb, vlc_table, 9, 3) - OFFSET; \
+            val += bitstream_read_vlc(bc, vlc_table, 9, 3) - OFFSET; \
             if (MASK) val &= MASK; \
             PAR[e][b] = val; \
             if (ERR_CONDITION) \
@@ -118,25 +117,25 @@ READ_PAR_DATA(iid,    huff_offset[table_idx],    0, FFABS(ps->iid_par[e][b]) > 7
 READ_PAR_DATA(icc,    huff_offset[table_idx],    0, ps->icc_par[e][b] > 7U)
 READ_PAR_DATA(ipdopd,                      0, 0x07, 0)
 
-static int ps_read_extension_data(GetBitContext *gb, PSContext *ps, int ps_extension_id)
+static int ps_read_extension_data(BitstreamContext *bc, PSContext *ps, int ps_extension_id)
 {
     int e;
-    int count = get_bits_count(gb);
+    int count = bitstream_tell(bc);
 
     if (ps_extension_id)
         return 0;
 
-    ps->enable_ipdopd = get_bits1(gb);
+    ps->enable_ipdopd = bitstream_read_bit(bc);
     if (ps->enable_ipdopd) {
         for (e = 0; e < ps->num_env; e++) {
-            int dt = get_bits1(gb);
-            read_ipdopd_data(NULL, gb, ps, ps->ipd_par, dt ? huff_ipd_dt : huff_ipd_df, e, dt);
-            dt = get_bits1(gb);
-            read_ipdopd_data(NULL, gb, ps, ps->opd_par, dt ? huff_opd_dt : huff_opd_df, e, dt);
+            int dt = bitstream_read_bit(bc);
+            read_ipdopd_data(NULL, bc, ps, ps->ipd_par, dt ? huff_ipd_dt : huff_ipd_df, e, dt);
+            dt = bitstream_read_bit(bc);
+            read_ipdopd_data(NULL, bc, ps, ps->opd_par, dt ? huff_opd_dt : huff_opd_df, e, dt);
         }
     }
-    skip_bits1(gb);      //reserved_ps
-    return get_bits_count(gb) - count;
+    bitstream_skip(bc, 1);      //reserved_ps
+    return bitstream_tell(bc) - count;
 }
 
 static void ipdopd_reset(int8_t *ipd_hist, int8_t *opd_hist)
@@ -148,19 +147,19 @@ static void ipdopd_reset(int8_t *ipd_hist, int8_t *opd_hist)
     }
 }
 
-int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb_host, PSContext *ps, int bits_left)
+int ff_ps_read_data(AVCodecContext *avctx, BitstreamContext *bc_host, PSContext *ps, int bits_left)
 {
     int e;
-    int bit_count_start = get_bits_count(gb_host);
+    int bit_count_start = bitstream_tell(bc_host);
     int header;
     int bits_consumed;
-    GetBitContext gbc = *gb_host, *gb = &gbc;
+    BitstreamContext bcc = *bc_host, *bc = &bcc;
 
-    header = get_bits1(gb);
+    header = bitstream_read_bit(bc);
     if (header) {     //enable_ps_header
-        ps->enable_iid = get_bits1(gb);
+        ps->enable_iid = bitstream_read_bit(bc);
         if (ps->enable_iid) {
-            int iid_mode = get_bits(gb, 3);
+            int iid_mode = bitstream_read(bc, 3);
             if (iid_mode > 5) {
                 av_log(avctx, AV_LOG_ERROR, "iid_mode %d is reserved.\n",
                        iid_mode);
@@ -170,9 +169,9 @@ int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb_host, PSContext *ps
             ps->iid_quant     = iid_mode > 2;
             ps->nr_ipdopd_par = nr_iidopd_par_tab[iid_mode];
         }
-        ps->enable_icc = get_bits1(gb);
+        ps->enable_icc = bitstream_read_bit(bc);
         if (ps->enable_icc) {
-            ps->icc_mode = get_bits(gb, 3);
+            ps->icc_mode = bitstream_read(bc, 3);
             if (ps->icc_mode > 5) {
                 av_log(avctx, AV_LOG_ERROR, "icc_mode %d is reserved.\n",
                        ps->icc_mode);
@@ -180,25 +179,25 @@ int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb_host, PSContext *ps
             }
             ps->nr_icc_par = nr_iidicc_par_tab[ps->icc_mode];
         }
-        ps->enable_ext = get_bits1(gb);
+        ps->enable_ext = bitstream_read_bit(bc);
     }
 
-    ps->frame_class = get_bits1(gb);
+    ps->frame_class = bitstream_read_bit(bc);
     ps->num_env_old = ps->num_env;
-    ps->num_env     = num_env_tab[ps->frame_class][get_bits(gb, 2)];
+    ps->num_env     = num_env_tab[ps->frame_class][bitstream_read(bc, 2)];
 
     ps->border_position[0] = -1;
     if (ps->frame_class) {
         for (e = 1; e <= ps->num_env; e++)
-            ps->border_position[e] = get_bits(gb, 5);
+            ps->border_position[e] = bitstream_read(bc, 5);
     } else
         for (e = 1; e <= ps->num_env; e++)
             ps->border_position[e] = (e * numQMFSlots >> ff_log2_tab[ps->num_env]) - 1;
 
     if (ps->enable_iid) {
         for (e = 0; e < ps->num_env; e++) {
-            int dt = get_bits1(gb);
-            if (read_iid_data(avctx, gb, ps, ps->iid_par, huff_iid[2*dt+ps->iid_quant], e, dt))
+            int dt = bitstream_read_bit(bc);
+            if (read_iid_data(avctx, bc, ps, ps->iid_par, huff_iid[2*dt+ps->iid_quant], e, dt))
                 goto err;
         }
     } else
@@ -206,28 +205,28 @@ int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb_host, PSContext *ps
 
     if (ps->enable_icc)
         for (e = 0; e < ps->num_env; e++) {
-            int dt = get_bits1(gb);
-            if (read_icc_data(avctx, gb, ps, ps->icc_par, dt ? huff_icc_dt : huff_icc_df, e, dt))
+            int dt = bitstream_read_bit(bc);
+            if (read_icc_data(avctx, bc, ps, ps->icc_par, dt ? huff_icc_dt : huff_icc_df, e, dt))
                 goto err;
         }
     else
         memset(ps->icc_par, 0, sizeof(ps->icc_par));
 
     if (ps->enable_ext) {
-        int cnt = get_bits(gb, 4);
+        int cnt = bitstream_read(bc, 4);
         if (cnt == 15) {
-            cnt += get_bits(gb, 8);
+            cnt += bitstream_read(bc, 8);
         }
         cnt *= 8;
         while (cnt > 7) {
-            int ps_extension_id = get_bits(gb, 2);
-            cnt -= 2 + ps_read_extension_data(gb, ps, ps_extension_id);
+            int ps_extension_id = bitstream_read(bc, 2);
+            cnt -= 2 + ps_read_extension_data(bc, ps, ps_extension_id);
         }
         if (cnt < 0) {
             av_log(avctx, AV_LOG_ERROR, "ps extension overflow %d\n", cnt);
             goto err;
         }
-        skip_bits(gb, cnt);
+        bitstream_skip(bc, cnt);
     }
 
     ps->enable_ipdopd &= !PS_BASELINE;
@@ -267,15 +266,15 @@ int ff_ps_read_data(AVCodecContext *avctx, GetBitContext *gb_host, PSContext *ps
     if (header)
         ps->start = 1;
 
-    bits_consumed = get_bits_count(gb) - bit_count_start;
+    bits_consumed = bitstream_tell(bc) - bit_count_start;
     if (bits_consumed <= bits_left) {
-        skip_bits_long(gb_host, bits_consumed);
+        bitstream_skip(bc_host, bits_consumed);
         return bits_consumed;
     }
     av_log(avctx, AV_LOG_ERROR, "Expected to read %d PS bits actually read %d.\n", bits_left, bits_consumed);
 err:
     ps->start = 0;
-    skip_bits_long(gb_host, bits_left);
+    bitstream_skip(bc_host, bits_left);
     memset(ps->iid_par, 0, sizeof(ps->iid_par));
     memset(ps->icc_par, 0, sizeof(ps->icc_par));
     memset(ps->ipd_par, 0, sizeof(ps->ipd_par));

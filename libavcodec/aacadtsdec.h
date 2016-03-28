@@ -24,7 +24,8 @@
 #define AVCODEC_AACADTSDEC_H
 
 #include <stdint.h>
-#include "get_bits.h"
+
+#include "bitstream.h"
 
 #define AAC_ADTS_HEADER_SIZE 7
 
@@ -43,12 +44,12 @@ typedef struct AACADTSHeaderInfo {
  * Parse AAC frame header.
  * Parse the ADTS frame header to the end of the variable header, which is
  * the first 54 bits.
- * @param[in]  gbc BitContext containing the first 54 bits of the frame.
+ * @param[in]  bcc BitContext containing the first 54 bits of the frame.
  * @param[out] hdr Pointer to struct where header info is written.
  * @return Returns 0 on success, -1 if there is a sync word mismatch,
  * -2 if the version element is invalid, -3 if the sample rate
  * element is invalid, or -4 if the bit rate element is invalid.
  */
-int avpriv_aac_parse_header(GetBitContext *gbc, AACADTSHeaderInfo *hdr);
+int avpriv_aac_parse_header(BitstreamContext *bcc, AACADTSHeaderInfo *hdr);
 
 #endif /* AVCODEC_AACADTSDEC_H */
