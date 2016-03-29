@@ -23,7 +23,8 @@
 #define AVCODEC_MPEG4AUDIO_H
 
 #include <stdint.h>
-#include "get_bits.h"
+
+#include "bitstream.h"
 #include "put_bits.h"
 
 typedef struct MPEG4AudioConfig {
@@ -105,6 +106,6 @@ enum AudioObjectType {
 #define MAX_PCE_SIZE 304 ///<Maximum size of a PCE including the 3-bit ID_PCE
                          ///<marker and the comment
 
-int avpriv_copy_pce_data(PutBitContext *pb, GetBitContext *gb);
+int avpriv_copy_pce_data(PutBitContext *pb, BitstreamContext *bc);
 
 #endif /* AVCODEC_MPEG4AUDIO_H */
