@@ -38,7 +38,7 @@
 #include "internal.h"
 #include "proresdata.h"
 #include "proresdsp.h"
-#include "get_bits.h"
+#include "bitstream.h"
 
 typedef struct ProresThreadData {
     const uint8_t *index;            ///< pointers to the data of this slice
@@ -297,15 +297,13 @@ static int decode_picture_header(ProresContext *ctx, const uint8_t *buf,
 /**
  * Read an unsigned rice/exp golomb codeword.
  */
-static inline int decode_vlc_codeword(GetBitContext *gb, unsigned codebook)
+static inline int decode_vlc_codeword(BitstreamContext *bc, unsigned codebook)
 {
     unsigned int rice_order, exp_order, switch_bits;
     unsigned int buf, code;
     int log, prefix_len, len;
 
-    OPEN_READER(re, gb);
-    UPDATE_CACHE(re, gb);
-    buf = GET_CACHE(re, gb);
+    buf = bitstream_peek(bc, 32);
 
     /* number of prefix bits to switch between Rice and expGolomb */
     switch_bits = (codebook & 3) + 1;
@@ -318,19 +316,17 @@ static inline int decode_vlc_codeword(GetBitContext *gb, unsigned codebook)
         if (!rice_order) {
             /* shortcut for faster decoding of rice codes without remainder */
             code = log;
-            LAST_SKIP_BITS(re, gb, log + 1);
+            bitstream_skip(bc, log + 1);
         } else {
             prefix_len = log + 1;
             code = (log << rice_order) + NEG_USR32(buf << prefix_len, rice_order);
-            LAST_SKIP_BITS(re, gb, prefix_len + rice_order);
+            bitstream_skip(bc, prefix_len + rice_order);
         }
     } else { /* otherwise we got a exp golomb code */
         len  = (log << 1) - switch_bits + exp_order + 1;
         code = NEG_USR32(buf, len) - (1 << exp_order) + (switch_bits << rice_order);
-        LAST_SKIP_BITS(re, gb, len);
+        bitstream_skip(bc, len);
     }
-
-    CLOSE_READER(re, gb);
 
     return code;
 }
@@ -341,7 +337,7 @@ static inline int decode_vlc_codeword(GetBitContext *gb, unsigned codebook)
 /**
  * Decode DC coefficients for all blocks in a slice.
  */
-static inline void decode_dc_coeffs(GetBitContext *gb, int16_t *out,
+static inline void decode_dc_coeffs(BitstreamContext *bc, int16_t *out,
                                     int nblocks)
 {
     int16_t prev_dc;
@@ -349,14 +345,14 @@ static inline void decode_dc_coeffs(GetBitContext *gb, int16_t *out,
     int16_t delta;
     unsigned int code;
 
-    code   = decode_vlc_codeword(gb, FIRST_DC_CB);
+    code   = decode_vlc_codeword(bc, FIRST_DC_CB);
     out[0] = prev_dc = TOSIGNED(code);
 
     out   += 64; /* move to the DC coeff of the next block */
     delta  = 3;
 
     for (i = 1; i < nblocks; i++, out += 64) {
-        code = decode_vlc_codeword(gb, ff_prores_dc_codebook[FFMIN(FFABS(delta), 3)]);
+        code = decode_vlc_codeword(bc, ff_prores_dc_codebook[FFMIN(FFABS(delta), 3)]);
 
         sign     = -(((delta >> 15) & 1) ^ (code & 1));
         delta    = (((code + 1) >> 1) ^ sign) - sign;
@@ -370,7 +366,7 @@ static inline void decode_dc_coeffs(GetBitContext *gb, int16_t *out,
 /**
  * Decode AC coefficients for all blocks in a slice.
  */
-static inline int decode_ac_coeffs(GetBitContext *gb, int16_t *out,
+static inline int decode_ac_coeffs(BitstreamContext *bc, int16_t *out,
                                    int blocks_per_slice,
                                    int plane_size_factor,
                                    const uint8_t *scan)
@@ -389,19 +385,19 @@ static inline int decode_ac_coeffs(GetBitContext *gb, int16_t *out,
         run_cb_index = ff_prores_run_to_cb_index[FFMIN(run, 15)];
         lev_cb_index = ff_prores_lev_to_cb_index[FFMIN(level, 9)];
 
-        bits_left = get_bits_left(gb);
-        if (bits_left <= 0 || (bits_left <= MAX_PADDING && !show_bits(gb, bits_left)))
+        bits_left = bitstream_bits_left(bc);
+        if (bits_left <= 0 || (bits_left <= MAX_PADDING && !bitstream_peek(bc, bits_left)))
             return 0;
 
-        run = decode_vlc_codeword(gb, ff_prores_ac_codebook[run_cb_index]);
+        run = decode_vlc_codeword(bc, ff_prores_ac_codebook[run_cb_index]);
         if (run < 0)
             return AVERROR_INVALIDDATA;
 
-        bits_left = get_bits_left(gb);
-        if (bits_left <= 0 || (bits_left <= MAX_PADDING && !show_bits(gb, bits_left)))
+        bits_left = bitstream_bits_left(bc);
+        if (bits_left <= 0 || (bits_left <= MAX_PADDING && !bitstream_peek(bc, bits_left)))
             return AVERROR_INVALIDDATA;
 
-        level = decode_vlc_codeword(gb, ff_prores_ac_codebook[lev_cb_index]) + 1;
+        level = decode_vlc_codeword(bc, ff_prores_ac_codebook[lev_cb_index]) + 1;
         if (level < 0)
             return AVERROR_INVALIDDATA;
 
@@ -409,7 +405,7 @@ static inline int decode_ac_coeffs(GetBitContext *gb, int16_t *out,
         if (pos >= max_coeffs)
             break;
 
-        sign = get_sbits(gb, 1);
+        sign = bitstream_read_signed(bc, 1);
         out[((pos & block_mask) << 6) + scan[pos >> plane_size_factor]] =
             (level ^ sign) - sign;
     }
@@ -428,7 +424,7 @@ static int decode_slice_plane(ProresContext *ctx, ProresThreadData *td,
                               int blocks_per_mb, int plane_size_factor,
                               const int16_t *qmat, int is_chroma)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     int16_t *block_ptr;
     int mb_num, blocks_per_slice, ret;
 
@@ -436,11 +432,11 @@ static int decode_slice_plane(ProresContext *ctx, ProresThreadData *td,
 
     memset(td->blocks, 0, 8 * 4 * 64 * sizeof(*td->blocks));
 
-    init_get_bits(&gb, buf, data_size << 3);
+    bitstream_init(&bc, buf, data_size << 3);
 
-    decode_dc_coeffs(&gb, td->blocks, blocks_per_slice);
+    decode_dc_coeffs(&bc, td->blocks, blocks_per_slice);
 
-    ret = decode_ac_coeffs(&gb, td->blocks, blocks_per_slice,
+    ret = decode_ac_coeffs(&bc, td->blocks, blocks_per_slice,
                            plane_size_factor, ctx->scantable.permutated);
     if (ret < 0)
         return ret;
@@ -481,7 +477,7 @@ static int decode_slice_plane(ProresContext *ctx, ProresThreadData *td,
 }
 
 
-static void unpack_alpha(GetBitContext *gb, uint16_t *dst, int num_coeffs,
+static void unpack_alpha(BitstreamContext *bc, uint16_t *dst, int num_coeffs,
                          const int num_bits)
 {
     const int mask = (1 << num_bits) - 1;
@@ -491,11 +487,11 @@ static void unpack_alpha(GetBitContext *gb, uint16_t *dst, int num_coeffs,
     alpha_val = mask;
     do {
         do {
-            if (get_bits1(gb))
-                val = get_bits(gb, num_bits);
+            if (bitstream_read_bit(bc))
+                val = bitstream_read(bc, num_bits);
             else {
                 int sign;
-                val  = get_bits(gb, num_bits == 16 ? 7 : 4);
+                val  = bitstream_read(bc, num_bits == 16 ? 7 : 4);
                 sign = val & 1;
                 val  = (val + 2) >> 1;
                 if (sign)
@@ -508,10 +504,10 @@ static void unpack_alpha(GetBitContext *gb, uint16_t *dst, int num_coeffs,
                 dst[idx++] = (alpha_val << 2) | (alpha_val >> 6);
             if (idx >= num_coeffs - 1)
                 break;
-        } while (get_bits1(gb));
-        val = get_bits(gb, 4);
+        } while (bitstream_read_bit(bc));
+        val = bitstream_read(bc, 4);
         if (!val)
-            val = get_bits(gb, 11);
+            val = bitstream_read(bc, 11);
         if (idx + val > num_coeffs)
             val = num_coeffs - idx;
         if (num_bits == 16)
@@ -531,18 +527,18 @@ static void decode_alpha_plane(ProresContext *ctx, ProresThreadData *td,
                                uint16_t *out_ptr, int linesize,
                                int mbs_per_slice)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     int i;
     uint16_t *block_ptr;
 
     memset(td->blocks, 0, 8 * 4 * 64 * sizeof(*td->blocks));
 
-    init_get_bits(&gb, buf, data_size << 3);
+    bitstream_init(&bc, buf, data_size << 3);
 
     if (ctx->alpha_info == 2)
-        unpack_alpha(&gb, td->blocks, mbs_per_slice * 4 * 64, 16);
+        unpack_alpha(&bc, td->blocks, mbs_per_slice * 4 * 64, 16);
     else
-        unpack_alpha(&gb, td->blocks, mbs_per_slice * 4 * 64, 8);
+        unpack_alpha(&bc, td->blocks, mbs_per_slice * 4 * 64, 8);
 
     block_ptr = td->blocks;
 
