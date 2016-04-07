@@ -26,7 +26,7 @@
 
 #include "avcodec.h"
 #include "ac3.h"
-#include "get_bits.h"
+#include "bitstream.h"
 
 /**
  * Starting frequency coefficient bin for each critical band.
