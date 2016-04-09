@@ -21,9 +21,9 @@
 #include "libavutil/common.h"
 #include "libavutil/log.h"
 
+#include "bitstream.h"
 #include "dca.h"
 #include "dca_syncwords.h"
-#include "get_bits.h"
 
 /* extensions that reside in core substream */
 #define DCA_CORE_EXTS (DCA_EXT_XCH | DCA_EXT_XXCH | DCA_EXT_X96)
@@ -69,14 +69,14 @@ static int dca_exss_mask2count(int mask)
 /**
  * Skip mixing coefficients of a single mix out configuration (HD)
  */
-static void dca_exss_skip_mix_coeffs(GetBitContext *gb, int channels, int out_ch)
+static void dca_exss_skip_mix_coeffs(BitstreamContext *bc, int channels, int out_ch)
 {
     int i;
 
     for (i = 0; i < channels; i++) {
-        int mix_map_mask = get_bits(gb, out_ch);
+        int mix_map_mask = bitstream_read(bc, out_ch);
         int num_coeffs = av_popcount(mix_map_mask);
-        skip_bits_long(gb, num_coeffs * 6);
+        bitstream_skip(bc, num_coeffs * 6);
     }
 }
 
@@ -85,7 +85,7 @@ static void dca_exss_skip_mix_coeffs(GetBitContext *gb, int channels, int out_ch
  */
 static int dca_exss_parse_asset_header(DCAContext *s)
 {
-    int header_pos = get_bits_count(&s->gb);
+    int header_pos = bitstream_tell(&s->bc);
     int header_size;
     int channels = 0;
     int embedded_stereo = 0;
@@ -94,112 +94,112 @@ static int dca_exss_parse_asset_header(DCAContext *s)
     int extensions_mask = 0;
     int i, j;
 
-    if (get_bits_left(&s->gb) < 16)
+    if (bitstream_bits_left(&s->bc) < 16)
         return AVERROR_INVALIDDATA;
 
     /* We will parse just enough to get to the extensions bitmask with which
      * we can set the profile value. */
 
-    header_size = get_bits(&s->gb, 9) + 1;
-    skip_bits(&s->gb, 3); // asset index
+    header_size = bitstream_read(&s->bc, 9) + 1;
+    bitstream_skip(&s->bc, 3); // asset index
 
     if (s->static_fields) {
-        if (get_bits1(&s->gb))
-            skip_bits(&s->gb, 4); // asset type descriptor
-        if (get_bits1(&s->gb))
-            skip_bits_long(&s->gb, 24); // language descriptor
+        if (bitstream_read_bit(&s->bc))
+            bitstream_skip(&s->bc, 4); // asset type descriptor
+        if (bitstream_read_bit(&s->bc))
+            bitstream_skip(&s->bc, 24); // language descriptor
 
-        if (get_bits1(&s->gb)) {
+        if (bitstream_read_bit(&s->bc)) {
             /* How can one fit 1024 bytes of text here if the maximum value
              * for the asset header size field above was 512 bytes? */
-            int text_length = get_bits(&s->gb, 10) + 1;
-            if (get_bits_left(&s->gb) < text_length * 8)
+            int text_length = bitstream_read(&s->bc, 10) + 1;
+            if (bitstream_bits_left(&s->bc) < text_length * 8)
                 return AVERROR_INVALIDDATA;
-            skip_bits_long(&s->gb, text_length * 8); // info text
+            bitstream_skip(&s->bc, text_length * 8); // info text
         }
 
-        skip_bits(&s->gb, 5); // bit resolution - 1
-        skip_bits(&s->gb, 4); // max sample rate code
-        channels = get_bits(&s->gb, 8) + 1;
+        bitstream_skip(&s->bc, 5); // bit resolution - 1
+        bitstream_skip(&s->bc, 4); // max sample rate code
+        channels = bitstream_read(&s->bc, 8) + 1;
 
-        s->one2one_map_chtospkr = get_bits1(&s->gb);
+        s->one2one_map_chtospkr = bitstream_read_bit(&s->bc);
         if (s->one2one_map_chtospkr) {
             int spkr_remap_sets;
             int spkr_mask_size = 16;
             int num_spkrs[7];
 
             if (channels > 2)
-                embedded_stereo = get_bits1(&s->gb);
+                embedded_stereo = bitstream_read_bit(&s->bc);
             if (channels > 6)
-                embedded_6ch = get_bits1(&s->gb);
+                embedded_6ch = bitstream_read_bit(&s->bc);
 
-            if (get_bits1(&s->gb)) {
-                spkr_mask_size = (get_bits(&s->gb, 2) + 1) << 2;
-                skip_bits(&s->gb, spkr_mask_size); // spkr activity mask
+            if (bitstream_read_bit(&s->bc)) {
+                spkr_mask_size = (bitstream_read(&s->bc, 2) + 1) << 2;
+                bitstream_skip(&s->bc, spkr_mask_size); // spkr activity mask
             }
 
-            spkr_remap_sets = get_bits(&s->gb, 3);
+            spkr_remap_sets = bitstream_read(&s->bc, 3);
 
             for (i = 0; i < spkr_remap_sets; i++) {
                 /* std layout mask for each remap set */
-                num_spkrs[i] = dca_exss_mask2count(get_bits(&s->gb, spkr_mask_size));
+                num_spkrs[i] = dca_exss_mask2count(bitstream_read(&s->bc, spkr_mask_size));
             }
 
             for (i = 0; i < spkr_remap_sets; i++) {
-                int num_dec_ch_remaps = get_bits(&s->gb, 5) + 1;
-                if (get_bits_left(&s->gb) < 0)
+                int num_dec_ch_remaps = bitstream_read(&s->bc, 5) + 1;
+                if (bitstream_bits_left(&s->bc) < 0)
                     return AVERROR_INVALIDDATA;
 
                 for (j = 0; j < num_spkrs[i]; j++) {
-                    int remap_dec_ch_mask = get_bits_long(&s->gb, num_dec_ch_remaps);
+                    int remap_dec_ch_mask = bitstream_read(&s->bc, num_dec_ch_remaps);
                     int num_dec_ch = av_popcount(remap_dec_ch_mask);
-                    skip_bits_long(&s->gb, num_dec_ch * 5); // remap codes
+                    bitstream_skip(&s->bc, num_dec_ch * 5); // remap codes
                 }
             }
         } else {
-            skip_bits(&s->gb, 3); // representation type
+            bitstream_skip(&s->bc, 3); // representation type
         }
     }
 
-    drc_code_present = get_bits1(&s->gb);
+    drc_code_present = bitstream_read_bit(&s->bc);
     if (drc_code_present)
-        get_bits(&s->gb, 8); // drc code
+        bitstream_read(&s->bc, 8); // drc code
 
-    if (get_bits1(&s->gb))
-        skip_bits(&s->gb, 5); // dialog normalization code
+    if (bitstream_read_bit(&s->bc))
+        bitstream_skip(&s->bc, 5); // dialog normalization code
 
     if (drc_code_present && embedded_stereo)
-        get_bits(&s->gb, 8); // drc stereo code
+        bitstream_read(&s->bc, 8); // drc stereo code
 
-    if (s->mix_metadata && get_bits1(&s->gb)) {
-        skip_bits(&s->gb, 1); // external mix
-        skip_bits(&s->gb, 6); // post mix gain code
+    if (s->mix_metadata && bitstream_read_bit(&s->bc)) {
+        bitstream_skip(&s->bc, 1); // external mix
+        bitstream_skip(&s->bc, 6); // post mix gain code
 
-        if (get_bits(&s->gb, 2) != 3) // mixer drc code
-            skip_bits(&s->gb, 3); // drc limit
+        if (bitstream_read(&s->bc, 2) != 3) // mixer drc code
+            bitstream_skip(&s->bc, 3); // drc limit
         else
-            skip_bits(&s->gb, 8); // custom drc code
+            bitstream_skip(&s->bc, 8); // custom drc code
 
-        if (get_bits1(&s->gb)) // channel specific scaling
+        if (bitstream_read_bit(&s->bc)) // channel specific scaling
             for (i = 0; i < s->num_mix_configs; i++)
-                skip_bits_long(&s->gb, s->mix_config_num_ch[i] * 6); // scale codes
+                bitstream_skip(&s->bc, s->mix_config_num_ch[i] * 6); // scale codes
         else
-            skip_bits_long(&s->gb, s->num_mix_configs * 6); // scale codes
+            bitstream_skip(&s->bc, s->num_mix_configs * 6); // scale codes
 
         for (i = 0; i < s->num_mix_configs; i++) {
-            if (get_bits_left(&s->gb) < 0)
+            if (bitstream_bits_left(&s->bc) < 0)
                 return AVERROR_INVALIDDATA;
-            dca_exss_skip_mix_coeffs(&s->gb, channels, s->mix_config_num_ch[i]);
+            dca_exss_skip_mix_coeffs(&s->bc, channels, s->mix_config_num_ch[i]);
             if (embedded_6ch)
-                dca_exss_skip_mix_coeffs(&s->gb, 6, s->mix_config_num_ch[i]);
+                dca_exss_skip_mix_coeffs(&s->bc, 6, s->mix_config_num_ch[i]);
             if (embedded_stereo)
-                dca_exss_skip_mix_coeffs(&s->gb, 2, s->mix_config_num_ch[i]);
+                dca_exss_skip_mix_coeffs(&s->bc, 2, s->mix_config_num_ch[i]);
         }
     }
 
-    switch (get_bits(&s->gb, 2)) {
+    switch (bitstream_read(&s->bc, 2)) {
     case 0:
-        extensions_mask = get_bits(&s->gb, 12);
+        extensions_mask = bitstream_read(&s->bc, 12);
         break;
     case 1:
         extensions_mask = DCA_EXT_EXSS_XLL;
@@ -214,14 +214,14 @@ static int dca_exss_parse_asset_header(DCAContext *s)
 
     /* not parsed further, we were only interested in the extensions mask */
 
-    if (get_bits_left(&s->gb) < 0)
+    if (bitstream_bits_left(&s->bc) < 0)
         return AVERROR_INVALIDDATA;
 
-    if (get_bits_count(&s->gb) - header_pos > header_size * 8) {
+    if (bitstream_tell(&s->bc) - header_pos > header_size * 8) {
         av_log(s->avctx, AV_LOG_WARNING, "Asset header size mismatch.\n");
         return AVERROR_INVALIDDATA;
     }
-    skip_bits_long(&s->gb, header_pos + header_size * 8 - get_bits_count(&s->gb));
+    bitstream_skip(&s->bc, header_pos + header_size * 8 - bitstream_tell(&s->bc));
 
     if (extensions_mask & DCA_EXT_EXSS_XLL)
         s->profile = FF_PROFILE_DTS_HD_MA;
@@ -255,30 +255,30 @@ void ff_dca_exss_parse_header(DCAContext *s)
     int hdrsize;
     uint32_t mkr;
 
-    if (get_bits_left(&s->gb) < 52)
+    if (bitstream_bits_left(&s->bc) < 52)
         return;
 
-    start_pos = get_bits_count(&s->gb) - 32;
+    start_pos = bitstream_tell(&s->bc) - 32;
 
-    skip_bits(&s->gb, 8); // user data
-    ss_index = get_bits(&s->gb, 2);
+    bitstream_skip(&s->bc, 8); // user data
+    ss_index = bitstream_read(&s->bc, 2);
 
-    blownup = get_bits1(&s->gb);
-    hdrsize = get_bits(&s->gb,  8 + 4 * blownup) + 1; // header_size
-    skip_bits(&s->gb, 16 + 4 * blownup); // hd_size
+    blownup = bitstream_read_bit(&s->bc);
+    hdrsize = bitstream_read(&s->bc,  8 + 4 * blownup) + 1; // header_size
+    bitstream_skip(&s->bc, 16 + 4 * blownup); // hd_size
 
-    s->static_fields = get_bits1(&s->gb);
+    s->static_fields = bitstream_read_bit(&s->bc);
     if (s->static_fields) {
-        skip_bits(&s->gb, 2); // reference clock code
-        skip_bits(&s->gb, 3); // frame duration code
+        bitstream_skip(&s->bc, 2); // reference clock code
+        bitstream_skip(&s->bc, 3); // frame duration code
 
-        if (get_bits1(&s->gb))
-            skip_bits_long(&s->gb, 36); // timestamp
+        if (bitstream_read_bit(&s->bc))
+            bitstream_skip(&s->bc, 36); // timestamp
 
         /* a single stream can contain multiple audio assets that can be
          * combined to form multiple audio presentations */
 
-        num_audiop = get_bits(&s->gb, 3) + 1;
+        num_audiop = bitstream_read(&s->bc, 3) + 1;
         if (num_audiop > 1) {
             avpriv_request_sample(s->avctx,
                                   "Multiple DTS-HD audio presentations");
@@ -286,7 +286,7 @@ void ff_dca_exss_parse_header(DCAContext *s)
             return;
         }
 
-        num_assets = get_bits(&s->gb, 3) + 1;
+        num_assets = bitstream_read(&s->bc, 3) + 1;
         if (num_assets > 1) {
             avpriv_request_sample(s->avctx, "Multiple DTS-HD audio assets");
             /* ignore such streams for now */
@@ -294,30 +294,30 @@ void ff_dca_exss_parse_header(DCAContext *s)
         }
 
         for (i = 0; i < num_audiop; i++)
-            active_ss_mask[i] = get_bits(&s->gb, ss_index + 1);
+            active_ss_mask[i] = bitstream_read(&s->bc, ss_index + 1);
 
         for (i = 0; i < num_audiop; i++)
             for (j = 0; j <= ss_index; j++)
                 if (active_ss_mask[i] & (1 << j))
-                    skip_bits(&s->gb, 8); // active asset mask
+                    bitstream_skip(&s->bc, 8); // active asset mask
 
-        s->mix_metadata = get_bits1(&s->gb);
+        s->mix_metadata = bitstream_read_bit(&s->bc);
         if (s->mix_metadata) {
             int mix_out_mask_size;
 
-            skip_bits(&s->gb, 2); // adjustment level
-            mix_out_mask_size  = (get_bits(&s->gb, 2) + 1) << 2;
-            s->num_mix_configs =  get_bits(&s->gb, 2) + 1;
+            bitstream_skip(&s->bc, 2); // adjustment level
+            mix_out_mask_size  = (bitstream_read(&s->bc, 2) + 1) << 2;
+            s->num_mix_configs =  bitstream_read(&s->bc, 2) + 1;
 
             for (i = 0; i < s->num_mix_configs; i++) {
-                int mix_out_mask        = get_bits(&s->gb, mix_out_mask_size);
+                int mix_out_mask        = bitstream_read(&s->bc, mix_out_mask_size);
                 s->mix_config_num_ch[i] = dca_exss_mask2count(mix_out_mask);
             }
         }
     }
 
     for (i = 0; i < num_assets; i++)
-        asset_size[i] = get_bits_long(&s->gb, 16 + 4 * blownup) + 1;
+        asset_size[i] = bitstream_read(&s->bc, 16 + 4 * blownup) + 1;
 
     for (i = 0; i < num_assets; i++) {
         if (dca_exss_parse_asset_header(s))
@@ -325,15 +325,15 @@ void ff_dca_exss_parse_header(DCAContext *s)
     }
 
     if (num_assets > 0) {
-        j = get_bits_count(&s->gb);
+        j = bitstream_tell(&s->bc);
         if (start_pos + hdrsize * 8 > j)
-            skip_bits_long(&s->gb, start_pos + hdrsize * 8 - j);
+            bitstream_skip(&s->bc, start_pos + hdrsize * 8 - j);
 
         for (i = 0; i < num_assets; i++) {
             int end_pos;
-            start_pos = get_bits_count(&s->gb);
+            start_pos = bitstream_tell(&s->bc);
             end_pos   = start_pos + asset_size[i] * 8;
-            mkr       = get_bits_long(&s->gb, 32);
+            mkr       = bitstream_read(&s->bc, 32);
 
             /* parse extensions that we know about */
             switch (mkr) {
@@ -357,12 +357,12 @@ void ff_dca_exss_parse_header(DCAContext *s)
             }
 
             /* skip to end of block */
-            j = get_bits_count(&s->gb);
+            j = bitstream_tell(&s->bc);
             if (j > end_pos)
                 av_log(s->avctx, AV_LOG_ERROR,
                        "DTS-ExSS: Processed asset too long.\n");
             if (j < end_pos)
-                skip_bits_long(&s->gb, end_pos - j);
+                bitstream_skip(&s->bc, end_pos - j);
         }
     }
 }

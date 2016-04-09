@@ -31,9 +31,9 @@
 #include "libavutil/internal.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "dcadsp.h"
 #include "fmtconvert.h"
-#include "get_bits.h"
 
 #define DCA_PRIM_CHANNELS_MAX  (7)
 #define DCA_ABITS_MAX         (32)      /* Should be 28 */
@@ -117,7 +117,7 @@ typedef struct XllChSetSubHeader {
 } XllChSetSubHeader;
 
 typedef struct XllNavi {
-    GetBitContext gb;  // Context for parsing the data segments
+    BitstreamContext bc;  // Context for parsing the data segments
     unsigned band_size[DCA_XLL_FBANDS_MAX];
     unsigned segment_size[DCA_XLL_FBANDS_MAX][DCA_XLL_SEGMENTS_MAX];
     unsigned chset_size[DCA_XLL_FBANDS_MAX][DCA_XLL_SEGMENTS_MAX][DCA_XLL_CHSETS_MAX];
@@ -239,7 +239,7 @@ typedef struct DCAContext {
     int dca_buffer_size;        ///< how much data is in the dca_buffer
 
     const int8_t *channel_order_tab;  ///< channel reordering table, lfe and non lfe
-    GetBitContext gb;
+    BitstreamContext bc;
     /* Current position in DCA frame */
     int current_subframe;
     int current_subsubframe;

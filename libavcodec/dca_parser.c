@@ -22,9 +22,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "dca.h"
 #include "dca_syncwords.h"
-#include "get_bits.h"
 #include "parser.h"
 
 typedef struct DCAParseContext {
@@ -112,7 +112,7 @@ static av_cold int dca_parse_init(AVCodecParserContext *s)
 static int dca_parse_params(const uint8_t *buf, int buf_size, int *duration,
                             int *sample_rate, int *framesize)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     uint8_t hdr[12 + AV_INPUT_BUFFER_PADDING_SIZE] = { 0 };
     int ret, sample_blocks, sr_code;
 
@@ -122,20 +122,20 @@ static int dca_parse_params(const uint8_t *buf, int buf_size, int *duration,
     if ((ret = ff_dca_convert_bitstream(buf, 12, hdr, 12)) < 0)
         return ret;
 
-    init_get_bits(&gb, hdr, 96);
+    bitstream_init(&bc, hdr, 96);
 
-    skip_bits_long(&gb, 39);
-    sample_blocks = get_bits(&gb, 7) + 1;
+    bitstream_skip(&bc, 39);
+    sample_blocks = bitstream_read(&bc, 7) + 1;
     if (sample_blocks < 8)
         return AVERROR_INVALIDDATA;
     *duration = 256 * (sample_blocks / 8);
 
-    *framesize = get_bits(&gb, 14) + 1;
+    *framesize = bitstream_read(&bc, 14) + 1;
     if (*framesize < 95)
         return AVERROR_INVALIDDATA;
 
-    skip_bits(&gb, 6);
-    sr_code      = get_bits(&gb, 4);
+    bitstream_skip(&bc, 6);
+    sr_code      = bitstream_read(&bc, 4);
     *sample_rate = avpriv_dca_sample_rates[sr_code];
     if (*sample_rate == 0)
         return AVERROR_INVALIDDATA;

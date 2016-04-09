@@ -26,15 +26,15 @@
 #include "libavutil/internal.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "dca.h"
 #include "dcadata.h"
-#include "get_bits.h"
 #include "unary.h"
 
 /* Sign as bit 0 */
-static inline int get_bits_sm(GetBitContext *s, unsigned n)
+static inline int get_bits_sm(BitstreamContext *s, unsigned n)
 {
-    int x = get_bits(s, n);
+    int x = bitstream_read(s, n);
     if (x & 1)
         return -(x >> 1) - 1;
     else
@@ -44,7 +44,7 @@ static inline int get_bits_sm(GetBitContext *s, unsigned n)
 /* Return -1 on error. */
 static int32_t get_dmix_coeff(DCAContext *s, int inverse)
 {
-    unsigned code = get_bits(&s->gb, 9);
+    unsigned code = bitstream_read(&s->bc, 9);
     int32_t sign = (int32_t) (code >> 8) - 1;
     unsigned idx = code & 0xff;
     int inv_offset = FF_DCA_DMIXTABLE_SIZE -FF_DCA_INV_DMIXTABLE_SIZE;
@@ -81,58 +81,58 @@ int ff_dca_xll_decode_header(DCAContext *s)
     int i, chset_index;
 
     /* get bit position of sync header */
-    hdr_pos    = get_bits_count(&s->gb) - 32;
+    hdr_pos    = bitstream_tell(&s->bc) - 32;
 
-    version    = get_bits(&s->gb, 4) + 1;
-    hdr_size   = get_bits(&s->gb, 8) + 1;
+    version    = bitstream_read(&s->bc, 4) + 1;
+    hdr_size   = bitstream_read(&s->bc, 8) + 1;
 
-    frame_size = get_bits_long(&s->gb, get_bits(&s->gb, 5) + 1) + 1;
+    frame_size = bitstream_read(&s->bc, bitstream_read(&s->bc, 5) + 1) + 1;
 
     s->xll_channels          =
     s->xll_residual_channels = 0;
-    s->xll_nch_sets          = get_bits(&s->gb, 4) + 1;
-    s->xll_segments          = 1 << get_bits(&s->gb, 4);
-    s->xll_log_smpl_in_seg   = get_bits(&s->gb, 4);
+    s->xll_nch_sets          = bitstream_read(&s->bc, 4) + 1;
+    s->xll_segments          = 1 << bitstream_read(&s->bc, 4);
+    s->xll_log_smpl_in_seg   = bitstream_read(&s->bc, 4);
     s->xll_smpl_in_seg       = 1 << s->xll_log_smpl_in_seg;
-    s->xll_bits4seg_size     = get_bits(&s->gb, 5) + 1;
-    s->xll_banddata_crc      = get_bits(&s->gb, 2);
-    s->xll_scalable_lsb      = get_bits1(&s->gb);
-    s->xll_bits4ch_mask      = get_bits(&s->gb, 5) + 1;
+    s->xll_bits4seg_size     = bitstream_read(&s->bc, 5) + 1;
+    s->xll_banddata_crc      = bitstream_read(&s->bc, 2);
+    s->xll_scalable_lsb      = bitstream_read_bit(&s->bc);
+    s->xll_bits4ch_mask      = bitstream_read(&s->bc, 5) + 1;
 
     if (s->xll_scalable_lsb) {
-        s->xll_fixed_lsb_width = get_bits(&s->gb, 4);
+        s->xll_fixed_lsb_width = bitstream_read(&s->bc, 4);
         if (s->xll_fixed_lsb_width)
             av_log(s->avctx, AV_LOG_WARNING,
                    "XLL: fixed lsb width = %d, non-zero not supported.\n",
                    s->xll_fixed_lsb_width);
     }
     /* skip to the end of the common header */
-    i = get_bits_count(&s->gb);
+    i = bitstream_tell(&s->bc);
     if (hdr_pos + hdr_size * 8 > i)
-        skip_bits_long(&s->gb, hdr_pos + hdr_size * 8 - i);
+        bitstream_skip(&s->bc, hdr_pos + hdr_size * 8 - i);
 
     for (chset_index = 0; chset_index < s->xll_nch_sets; chset_index++) {
         XllChSetSubHeader *chset = &s->xll_chsets[chset_index];
-        hdr_pos  = get_bits_count(&s->gb);
-        hdr_size = get_bits(&s->gb, 10) + 1;
+        hdr_pos  = bitstream_tell(&s->bc);
+        hdr_size = bitstream_read(&s->bc, 10) + 1;
 
-        chset->channels           = get_bits(&s->gb, 4) + 1;
-        chset->residual_encode    = get_bits(&s->gb, chset->channels);
-        chset->bit_resolution     = get_bits(&s->gb, 5) + 1;
-        chset->bit_width          = get_bits(&s->gb, 5) + 1;
-        chset->sampling_frequency = ff_dca_sampling_freqs[get_bits(&s->gb, 4)];
-        chset->samp_freq_interp   = get_bits(&s->gb, 2);
-        chset->replacement_set    = get_bits(&s->gb, 2);
+        chset->channels           = bitstream_read(&s->bc, 4) + 1;
+        chset->residual_encode    = bitstream_read(&s->bc, chset->channels);
+        chset->bit_resolution     = bitstream_read(&s->bc, 5) + 1;
+        chset->bit_width          = bitstream_read(&s->bc, 5) + 1;
+        chset->sampling_frequency = ff_dca_sampling_freqs[bitstream_read(&s->bc, 4)];
+        chset->samp_freq_interp   = bitstream_read(&s->bc, 2);
+        chset->replacement_set    = bitstream_read(&s->bc, 2);
         if (chset->replacement_set)
-            chset->active_replace_set = get_bits(&s->gb, 1);
+            chset->active_replace_set = bitstream_read(&s->bc, 1);
 
         if (s->one2one_map_chtospkr) {
-            chset->primary_ch_set              = get_bits(&s->gb, 1);
-            chset->downmix_coeff_code_embedded = get_bits(&s->gb, 1);
+            chset->primary_ch_set              = bitstream_read(&s->bc, 1);
+            chset->downmix_coeff_code_embedded = bitstream_read(&s->bc, 1);
             if (chset->downmix_coeff_code_embedded) {
-                chset->downmix_embedded = get_bits(&s->gb, 1);
+                chset->downmix_embedded = bitstream_read(&s->bc, 1);
                 if (chset->primary_ch_set) {
-                    chset->downmix_type = get_bits(&s->gb, 3);
+                    chset->downmix_type = bitstream_read(&s->bc, 3);
                     if (chset->downmix_type > 6) {
                         av_log(s->avctx, AV_LOG_ERROR,
                                "XLL: Invalid channel set downmix type\n");
@@ -140,7 +140,7 @@ int ff_dca_xll_decode_header(DCAContext *s)
                     }
                 }
             }
-            chset->hier_chset = get_bits(&s->gb, 1);
+            chset->hier_chset = bitstream_read(&s->bc, 1);
 
             if (chset->downmix_coeff_code_embedded) {
                 /* nDownmixCoeffs is specified as N * M. For a primary
@@ -182,24 +182,24 @@ int ff_dca_xll_decode_header(DCAContext *s)
                     }
                 }
             }
-            chset->ch_mask_enabled = get_bits(&s->gb, 1);
+            chset->ch_mask_enabled = bitstream_read(&s->bc, 1);
             if (chset->ch_mask_enabled)
-                chset->ch_mask = get_bits(&s->gb, s->xll_bits4ch_mask);
+                chset->ch_mask = bitstream_read(&s->bc, s->xll_bits4ch_mask);
             else
                 /* Skip speaker configuration bits */
-                skip_bits_long(&s->gb, 25 * chset->channels);
+                bitstream_skip(&s->bc, 25 * chset->channels);
         } else {
             chset->primary_ch_set              = 1;
             chset->downmix_coeff_code_embedded = 0;
             /* Spec: NumChHierChSet = 0, NumDwnMixCodeCoeffs = 0, whatever that means. */
-            chset->mapping_coeffs_present = get_bits(&s->gb, 1);
+            chset->mapping_coeffs_present = bitstream_read(&s->bc, 1);
             if (chset->mapping_coeffs_present) {
                 avpriv_report_missing_feature(s->avctx, "XLL: mapping coefficients");
                 return AVERROR_PATCHWELCOME;
             }
         }
         if (chset->sampling_frequency > 96000)
-            chset->num_freq_bands = 2 * (1 + get_bits(&s->gb, 1));
+            chset->num_freq_bands = 2 * (1 + bitstream_read(&s->bc, 1));
         else
             chset->num_freq_bands = 1;
 
@@ -208,10 +208,10 @@ int ff_dca_xll_decode_header(DCAContext *s)
             return AVERROR_PATCHWELCOME;
         }
 
-        if (get_bits(&s->gb, 1)) { /* pw_ch_decor_enabled */
+        if (bitstream_read(&s->bc, 1)) { /* pw_ch_decor_enabled */
             int bits = av_ceil_log2(chset->channels);
             for (i = 0; i < chset->channels; i++) {
-                unsigned j = get_bits(&s->gb, bits);
+                unsigned j = bitstream_read(&s->bc, bits);
                 if (j >= chset->channels) {
                     av_log(s->avctx, AV_LOG_ERROR,
                            "Original channel order value %u too large, only %d channels.\n",
@@ -222,8 +222,8 @@ int ff_dca_xll_decode_header(DCAContext *s)
                 chset->orig_chan_order_inv[0][j] = i;
             }
             for (i = 0; i < chset->channels / 2; i++) {
-                if (get_bits(&s->gb, 1)) /* bChPFlag */
-                    chset->pw_ch_pairs_coeffs[0][i] = get_bits_sm(&s->gb, 7);
+                if (bitstream_read(&s->bc, 1)) /* bChPFlag */
+                    chset->pw_ch_pairs_coeffs[0][i] = get_bits_sm(&s->bc, 7);
                 else
                     chset->pw_ch_pairs_coeffs[0][i] = 0;
             }
@@ -237,7 +237,7 @@ int ff_dca_xll_decode_header(DCAContext *s)
         /* Adaptive prediction order */
         chset->adapt_order_max[0] = 0;
         for (i = 0; i < chset->channels; i++) {
-            chset->adapt_order[0][i] = get_bits(&s->gb, 4);
+            chset->adapt_order[0][i] = bitstream_read(&s->bc, 4);
             if (chset->adapt_order_max[0] < chset->adapt_order[0][i])
                 chset->adapt_order_max[0] = chset->adapt_order[0][i];
         }
@@ -245,21 +245,21 @@ int ff_dca_xll_decode_header(DCAContext *s)
          * above is zero */
         for (i = 0; i < chset->channels; i++)
             chset->fixed_order[0][i] =
-                chset->adapt_order[0][i] ? 0 : get_bits(&s->gb, 2);
+                chset->adapt_order[0][i] ? 0 : bitstream_read(&s->bc, 2);
 
         for (i = 0; i < chset->channels; i++) {
             unsigned j;
             for (j = 0; j < chset->adapt_order[0][i]; j++)
-                chset->lpc_refl_coeffs_q_ind[0][i][j] = get_bits(&s->gb, 8);
+                chset->lpc_refl_coeffs_q_ind[0][i][j] = bitstream_read(&s->bc, 8);
         }
 
         if (s->xll_scalable_lsb) {
-            chset->lsb_fsize[0] = get_bits(&s->gb, s->xll_bits4seg_size);
+            chset->lsb_fsize[0] = bitstream_read(&s->bc, s->xll_bits4seg_size);
 
             for (i = 0; i < chset->channels; i++)
-                chset->scalable_lsbs[0][i] = get_bits(&s->gb, 4);
+                chset->scalable_lsbs[0][i] = bitstream_read(&s->bc, 4);
             for (i = 0; i < chset->channels; i++)
-                chset->bit_width_adj_per_ch[0][i] = get_bits(&s->gb, 4);
+                chset->bit_width_adj_per_ch[0][i] = bitstream_read(&s->bc, 4);
         } else {
             memset(chset->scalable_lsbs[0], 0,
                    chset->channels * sizeof(chset->scalable_lsbs[0][0]));
@@ -274,7 +274,7 @@ int ff_dca_xll_decode_header(DCAContext *s)
         /* FIXME: Parse header data for extra frequency bands. */
 
         /* Skip to end of channel set sub header. */
-        i = get_bits_count(&s->gb);
+        i = bitstream_tell(&s->bc);
         if (hdr_pos + 8 * hdr_size < i) {
             av_log(s->avctx, AV_LOG_ERROR,
                    "chset header too large, %d bits, should be <= %d bits\n",
@@ -282,7 +282,7 @@ int ff_dca_xll_decode_header(DCAContext *s)
             return AVERROR_INVALIDDATA;
         }
         if (hdr_pos + 8 * hdr_size > i)
-            skip_bits_long(&s->gb, hdr_pos + 8 * hdr_size - i);
+            bitstream_skip(&s->bc, hdr_pos + 8 * hdr_size - i);
     }
     return 0;
 }
@@ -307,7 +307,7 @@ int ff_dca_xll_decode_navi(DCAContext *s, int asset_end)
             for (chset = 0; chset < s->xll_nch_sets; chset++)
                 if (band < s->xll_chsets[chset].num_freq_bands) {
                     s->xll_navi.chset_size[band][seg][chset] =
-                        get_bits(&s->gb, s->xll_bits4seg_size) + 1;
+                        bitstream_read(&s->bc, s->xll_bits4seg_size) + 1;
                     s->xll_navi.segment_size[band][seg] +=
                         s->xll_navi.chset_size[band][seg][chset];
                 }
@@ -315,9 +315,9 @@ int ff_dca_xll_decode_navi(DCAContext *s, int asset_end)
         }
     }
     /* Align to 8 bits and skip 16-bit CRC. */
-    skip_bits_long(&s->gb, 16 + ((-get_bits_count(&s->gb)) & 7));
+    bitstream_skip(&s->bc, 16 + ((-bitstream_tell(&s->bc)) & 7));
 
-    data_start = get_bits_count(&s->gb);
+    data_start = bitstream_tell(&s->bc);
     if (data_start + 8 * s->xll_navi.band_size[0] > asset_end) {
         av_log(s->avctx, AV_LOG_ERROR,
                "XLL: Data in NAVI table exceeds containing asset\n"
@@ -326,8 +326,8 @@ int ff_dca_xll_decode_navi(DCAContext *s, int asset_end)
                data_start + 8 * s->xll_navi.band_size[0] - asset_end);
         return AVERROR_INVALIDDATA;
     }
-    init_get_bits(&s->xll_navi.gb, s->gb.buffer + data_start / 8,
-                  8 * s->xll_navi.band_size[0]);
+    bitstream_init8(&s->xll_navi.bc, s->bc.buffer + data_start / 8,
+                    s->xll_navi.band_size[0]);
     return 0;
 }
 
@@ -421,7 +421,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
         int nSamplPart0[16];
     } param_state[16];
 
-    GetBitContext *gb = &s->xll_navi.gb;
+    BitstreamContext *bc = &s->xll_navi.bc;
     int *history;
 
     /* Layout: First the sample buffer for one segment per channel,
@@ -440,7 +440,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
 
         for (chset_i = in_channel = 0; chset_i < s->xll_nch_sets; chset_i++) {
             /* The spec isn't very explicit, but I think the NAVI sizes are in bytes. */
-            int end_pos = get_bits_count(gb) +
+            int end_pos = bitstream_tell(bc) +
                           8 * s->xll_navi.chset_size[0][seg][chset_i];
             int i, j;
             struct coding_params *params = &param_state[chset_i];
@@ -459,7 +459,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                 goto next_chset;
             }
             if (seg != 0)
-                use_seg_state_code_param = get_bits(gb, 1);
+                use_seg_state_code_param = bitstream_read(bc, 1);
             else
                 use_seg_state_code_param = 0;
 
@@ -467,7 +467,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                 int num_param_sets, i;
                 unsigned bits4ABIT;
 
-                params->seg_type = get_bits(gb, 1);
+                params->seg_type = bitstream_read(bc, 1);
                 num_param_sets   = params->seg_type ? 1 : chset->channels;
 
                 if (chset->bit_width > 16) {
@@ -482,9 +482,9 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                 }
 
                 for (i = 0; i < num_param_sets; i++) {
-                    params->rice_code_flag[i] = get_bits(gb, 1);
-                    if (!params->seg_type && params->rice_code_flag[i] && get_bits(gb, 1))
-                        params->pancAuxABIT[i] = get_bits(gb, bits4ABIT) + 1;
+                    params->rice_code_flag[i] = bitstream_read(bc, 1);
+                    if (!params->seg_type && params->rice_code_flag[i] && bitstream_read(bc, 1))
+                        params->pancAuxABIT[i] = bitstream_read(bc, bits4ABIT) + 1;
                     else
                         params->pancAuxABIT[i] = 0;
                 }
@@ -492,7 +492,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                 for (i = 0; i < num_param_sets; i++) {
                     if (!seg) {
                         /* Parameters for part 1 */
-                        params->pancABIT0[i] = get_bits(gb, bits4ABIT);
+                        params->pancABIT0[i] = bitstream_read(bc, bits4ABIT);
                         if (params->rice_code_flag[i] == 0 && params->pancABIT0[i] > 0)
                             /* For linear code */
                             params->pancABIT0[i]++;
@@ -506,7 +506,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                         params->nSamplPart0[i] = 0;
 
                     /* Parameters for part 2 */
-                    params->pancABIT[i] = get_bits(gb, bits4ABIT);
+                    params->pancABIT[i] = bitstream_read(bc, bits4ABIT);
                     if (params->rice_code_flag[i] == 0 && params->pancABIT[i] > 0)
                         /* For linear code */
                         params->pancABIT[i]++;
@@ -523,7 +523,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                     /* Linear code */
                     if (bits)
                         for (j = 0; j < part0; j++)
-                            sample_buf[j] = get_bits_sm(gb, bits);
+                            sample_buf[j] = get_bits_sm(bc, bits);
                     else
                         memset(sample_buf, 0, part0 * sizeof(sample_buf[0]));
 
@@ -531,7 +531,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                     bits = params->pancABIT[param_index];
                     if (bits)
                         for (j = part0; j < s->xll_smpl_in_seg; j++)
-                            sample_buf[j] = get_bits_sm(gb, bits);
+                            sample_buf[j] = get_bits_sm(bc, bits);
                     else
                         memset(sample_buf + part0, 0,
                                (s->xll_smpl_in_seg - part0) * sizeof(sample_buf[0]));
@@ -540,10 +540,10 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
 
                     for (j = 0; j < part0; j++) {
                         /* FIXME: Is this identical to Golomb code? */
-                        int t = get_unary(gb, 1, 33) << bits;
+                        int t = get_unary(bc, 1, 33) << bits;
                         /* FIXME: Could move this test outside of the loop, for efficiency. */
                         if (bits)
-                            t |= get_bits(gb, bits);
+                            t |= bitstream_read(bc, bits);
                         sample_buf[j] = (t & 1) ? -(t >> 1) - 1 : (t >> 1);
                     }
 
@@ -561,21 +561,21 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                          * are used for each index, but this value is not
                          * defined. I guess we should use log2(xll_smpl_in_seg)
                          * bits. */
-                        int count = get_bits(gb, s->xll_log_smpl_in_seg);
+                        int count = bitstream_read(bc, s->xll_log_smpl_in_seg);
                         av_log(s->avctx, AV_LOG_DEBUG, "aux count %d (bits %d)\n",
                                count, s->xll_log_smpl_in_seg);
 
                         for (j = 0; j < count; j++)
-                            sample_buf[get_bits(gb, s->xll_log_smpl_in_seg)] = 1;
+                            sample_buf[bitstream_read(bc, s->xll_log_smpl_in_seg)] = 1;
                     }
                     for (j = part0; j < s->xll_smpl_in_seg; j++) {
                         if (!sample_buf[j]) {
-                            int t = get_unary(gb, 1, 33);
+                            int t = get_unary(bc, 1, 33);
                             if (bits)
-                                t = (t << bits) | get_bits(gb, bits);
+                                t = (t << bits) | bitstream_read(bc, bits);
                             sample_buf[j] = (t & 1) ? -(t >> 1) - 1 : (t >> 1);
                         } else
-                            sample_buf[j] = get_bits_sm(gb, aux_bits);
+                            sample_buf[j] = get_bits_sm(bc, aux_bits);
                     }
                 }
             }
@@ -618,7 +618,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                 int lsb_start = end_pos - 8 * chset->lsb_fsize[0] -
                                 8 * (s->xll_banddata_crc & 2);
                 int done;
-                i = get_bits_count(gb);
+                i = bitstream_tell(bc);
                 if (i > lsb_start) {
                     av_log(s->avctx, AV_LOG_ERROR,
                            "chset data lsb exceeds NAVI size, end_pos %d, lsb_start %d, pos %d\n",
@@ -626,7 +626,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
                     return AVERROR_INVALIDDATA;
                 }
                 if (i < lsb_start)
-                    skip_bits_long(gb, lsb_start - i);
+                    bitstream_skip(bc, lsb_start - i);
 
                 for (i = done = 0; i < chset->channels; i++) {
                     int bits = chset->scalable_lsbs[0][i];
@@ -646,7 +646,7 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
 
                         for (j = 0; j < s->xll_smpl_in_seg; j++)
                             sample_buf[j] = (sample_buf[j] << msb_shift) +
-                                            (get_bits(gb, bits) << adj);
+                                            (bitstream_read(bc, bits) << adj);
 
                         done += bits * s->xll_smpl_in_seg;
                     }
@@ -733,14 +733,14 @@ int ff_dca_xll_decode_audio(DCAContext *s, AVFrame *frame)
 next_chset:
             in_channel += chset->channels;
             /* Skip to next channel set using the NAVI info. */
-            i = get_bits_count(gb);
+            i = bitstream_tell(bc);
             if (i > end_pos) {
                 av_log(s->avctx, AV_LOG_ERROR,
                        "chset data exceeds NAVI size\n");
                 return AVERROR_INVALIDDATA;
             }
             if (i < end_pos)
-                skip_bits_long(gb, end_pos - i);
+                bitstream_skip(bc, end_pos - i);
         }
     }
     return 0;
