@@ -130,7 +130,7 @@ static void fill_slice(AVCodecContext *avctx,
                        const uint8_t *buffer, unsigned size)
 {
     int is_field = s->picture_structure != PICT_FRAME;
-    GetBitContext gb;
+    BitstreamContext bc;
 
     memset(slice, 0, sizeof(*slice));
     slice->wHorizontalPosition = s->mb_x;
@@ -143,13 +143,13 @@ static void fill_slice(AVCodecContext *avctx,
     slice->wNumberMBsInSlice   = (s->mb_y >> is_field) * s->mb_width + s->mb_x;
     slice->wBadSliceChopping   = 0;
 
-    init_get_bits(&gb, &buffer[4], 8 * (size - 4));
+    bitstream_init(&bc, &buffer[4], 8 * (size - 4));
 
-    slice->wQuantizerScaleCode = get_bits(&gb, 5);
-    while (get_bits1(&gb))
-        skip_bits(&gb, 8);
+    slice->wQuantizerScaleCode = bitstream_read(&bc, 5);
+    while (bitstream_read_bit(&bc))
+        bitstream_skip(&bc, 8);
 
-    slice->wMBbitOffset        = 4 * 8 + get_bits_count(&gb);
+    slice->wMBbitOffset        = 4 * 8 + bitstream_tell(&bc);
 }
 static int commit_bitstream_and_slice_buffer(AVCodecContext *avctx,
                                              DECODER_BUFFER_DESC *bs,
