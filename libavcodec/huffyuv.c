@@ -33,6 +33,7 @@
 #include "libavutil/mem.h"
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "bswapdsp.h"
 #include "huffyuv.h"
 

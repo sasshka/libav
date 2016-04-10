@@ -29,7 +29,7 @@
  */
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "huffyuv.h"
 #include "huffyuvdsp.h"
 #include "thread.h"
@@ -87,16 +87,16 @@ static const unsigned char classic_add_chroma[256] = {
       6,  12,   8,  10,   7,   9,   6,   4,   6,   2,   2,   3,   3,   3,   3,   2,
 };
 
-static int read_len_table(uint8_t *dst, GetBitContext *gb)
+static int read_len_table(uint8_t *dst, BitstreamContext *bc)
 {
     int i, val, repeat;
 
     for (i = 0; i < 256;) {
-        repeat = get_bits(gb, 3);
-        val    = get_bits(gb, 5);
+        repeat = bitstream_read(bc, 3);
+        val    = bitstream_read(bc, 5);
         if (repeat == 0)
-            repeat = get_bits(gb, 8);
-        if (i + repeat > 256 || get_bits_left(gb) < 0) {
+            repeat = bitstream_read(bc, 8);
+        if (i + repeat > 256 || bitstream_bits_left(bc) < 0) {
             av_log(NULL, AV_LOG_ERROR, "Error reading huffman table\n");
             return AVERROR_INVALIDDATA;
         }
@@ -185,14 +185,14 @@ static int generate_joint_tables(HYuvContext *s)
 
 static int read_huffman_tables(HYuvContext *s, const uint8_t *src, int length)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     int i, ret;
 
-    if ((ret = init_get_bits(&gb, src, length * 8)) < 0)
+    if ((ret = bitstream_init(&bc, src, length * 8)) < 0)
         return ret;
 
     for (i = 0; i < 3; i++) {
-        if ((ret = read_len_table(s->len[i], &gb)) < 0)
+        if ((ret = read_len_table(s->len[i], &bc)) < 0)
             return ret;
         if ((ret = ff_huffyuv_generate_bits_table(s->bits[i], s->len[i])) < 0)
             return ret;
@@ -205,24 +205,24 @@ static int read_huffman_tables(HYuvContext *s, const uint8_t *src, int length)
     if ((ret = generate_joint_tables(s)) < 0)
         return ret;
 
-    return (get_bits_count(&gb) + 7) / 8;
+    return (bitstream_tell(&bc) + 7) / 8;
 }
 
 static int read_old_huffman_tables(HYuvContext *s)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     int i, ret;
 
-    if ((ret = init_get_bits(&gb, classic_shift_luma,
+    if ((ret = bitstream_init(&bc, classic_shift_luma,
                              classic_shift_luma_table_size * 8)) < 0)
         return ret;
-    if ((ret = read_len_table(s->len[0], &gb)) < 0)
+    if ((ret = read_len_table(s->len[0], &bc)) < 0)
         return ret;
 
-    if ((ret = init_get_bits(&gb, classic_shift_chroma,
+    if ((ret = bitstream_init(&bc, classic_shift_chroma,
                              classic_shift_chroma_table_size * 8)) < 0)
         return ret;
-    if ((ret = read_len_table(s->len[1], &gb)) < 0)
+    if ((ret = read_len_table(s->len[1], &bc)) < 0)
         return ret;
 
     for (i = 0; i < 256; i++)
@@ -381,14 +381,14 @@ static av_cold int decode_init_thread_copy(AVCodecContext *avctx)
  * of the joint table, jump into the 2nd level of the individual table. */
 #define READ_2PIX(dst0, dst1, plane1)                                   \
     {                                                                   \
-        uint16_t code = get_vlc2(&s->gb, s->vlc[3 + plane1].table,      \
+        uint16_t code = bitstream_read_vlc(&s->bc, s->vlc[3 + plane1].table,      \
                                  VLC_BITS, 1);                          \
         if (code != 0xffff) {                                           \
             dst0 = code >> 8;                                           \
             dst1 = code;                                                \
         } else {                                                        \
-            dst0 = get_vlc2(&s->gb, s->vlc[0].table, VLC_BITS, 3);      \
-            dst1 = get_vlc2(&s->gb, s->vlc[plane1].table, VLC_BITS, 3); \
+            dst0 = bitstream_read_vlc(&s->bc, s->vlc[0].table, VLC_BITS, 3);      \
+            dst1 = bitstream_read_vlc(&s->bc, s->vlc[plane1].table, VLC_BITS, 3); \
         }                                                               \
     }
 
@@ -398,8 +398,8 @@ static void decode_422_bitstream(HYuvContext *s, int count)
 
     count /= 2;
 
-    if (count >= (get_bits_left(&s->gb)) / (31 * 4)) {
-        for (i = 0; i < count && get_bits_left(&s->gb) > 0; i++) {
+    if (count >= (bitstream_bits_left(&s->bc)) / (31 * 4)) {
+        for (i = 0; i < count && bitstream_bits_left(&s->bc) > 0; i++) {
             READ_2PIX(s->temp[0][2 * i],     s->temp[1][i], 1);
             READ_2PIX(s->temp[0][2 * i + 1], s->temp[2][i], 2);
         }
@@ -417,8 +417,8 @@ static void decode_gray_bitstream(HYuvContext *s, int count)
 
     count /= 2;
 
-    if (count >= (get_bits_left(&s->gb)) / (31 * 2)) {
-        for (i = 0; i < count && get_bits_left(&s->gb) > 0; i++) {
+    if (count >= (bitstream_bits_left(&s->bc)) / (31 * 2)) {
+        for (i = 0; i < count && bitstream_bits_left(&s->bc) > 0; i++) {
             READ_2PIX(s->temp[0][2 * i], s->temp[0][2 * i + 1], 0);
         }
     } else {
@@ -433,22 +433,22 @@ static av_always_inline void decode_bgr_1(HYuvContext *s, int count,
 {
     int i;
     for (i = 0; i < count; i++) {
-        int code = get_vlc2(&s->gb, s->vlc[3].table, VLC_BITS, 1);
+        int code = bitstream_read_vlc(&s->bc, s->vlc[3].table, VLC_BITS, 1);
         if (code != -1) {
             *(uint32_t *) &s->temp[0][4 * i] = s->pix_bgr_map[code];
         } else if (decorrelate) {
-            s->temp[0][4 * i + G] = get_vlc2(&s->gb, s->vlc[1].table, VLC_BITS, 3);
-            s->temp[0][4 * i + B] = get_vlc2(&s->gb, s->vlc[0].table, VLC_BITS, 3) +
+            s->temp[0][4 * i + G] = bitstream_read_vlc(&s->bc, s->vlc[1].table, VLC_BITS, 3);
+            s->temp[0][4 * i + B] = bitstream_read_vlc(&s->bc, s->vlc[0].table, VLC_BITS, 3) +
                                     s->temp[0][4 * i + G];
-            s->temp[0][4 * i + R] = get_vlc2(&s->gb, s->vlc[2].table, VLC_BITS, 3) +
+            s->temp[0][4 * i + R] = bitstream_read_vlc(&s->bc, s->vlc[2].table, VLC_BITS, 3) +
                                     s->temp[0][4 * i + G];
         } else {
-            s->temp[0][4 * i + B] = get_vlc2(&s->gb, s->vlc[0].table, VLC_BITS, 3);
-            s->temp[0][4 * i + G] = get_vlc2(&s->gb, s->vlc[1].table, VLC_BITS, 3);
-            s->temp[0][4 * i + R] = get_vlc2(&s->gb, s->vlc[2].table, VLC_BITS, 3);
+            s->temp[0][4 * i + B] = bitstream_read_vlc(&s->bc, s->vlc[0].table, VLC_BITS, 3);
+            s->temp[0][4 * i + G] = bitstream_read_vlc(&s->bc, s->vlc[1].table, VLC_BITS, 3);
+            s->temp[0][4 * i + R] = bitstream_read_vlc(&s->bc, s->vlc[2].table, VLC_BITS, 3);
         }
         if (alpha)
-            s->temp[0][4 * i + A] = get_vlc2(&s->gb, s->vlc[2].table, VLC_BITS, 3);
+            s->temp[0][4 * i + A] = bitstream_read_vlc(&s->bc, s->vlc[2].table, VLC_BITS, 3);
     }
 }
 
@@ -533,7 +533,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     if ((unsigned) (buf_size - table_size) >= INT_MAX / 8)
         return AVERROR_INVALIDDATA;
 
-    if ((ret = init_get_bits(&s->gb, s->bitstream_buffer + table_size,
+    if ((ret = bitstream_init(&s->bc, s->bitstream_buffer + table_size,
                              (buf_size - table_size) * 8)) < 0)
         return ret;
 
@@ -549,21 +549,21 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         int lefttopy, lefttopu, lefttopv;
 
         if (s->yuy2) {
-            p->data[0][3] = get_bits(&s->gb, 8);
-            p->data[0][2] = get_bits(&s->gb, 8);
-            p->data[0][1] = get_bits(&s->gb, 8);
-            p->data[0][0] = get_bits(&s->gb, 8);
+            p->data[0][3] = bitstream_read(&s->bc, 8);
+            p->data[0][2] = bitstream_read(&s->bc, 8);
+            p->data[0][1] = bitstream_read(&s->bc, 8);
+            p->data[0][0] = bitstream_read(&s->bc, 8);
 
             avpriv_report_missing_feature(avctx, "YUY2 output");
             return AVERROR_PATCHWELCOME;
         } else {
             leftv         =
-            p->data[2][0] = get_bits(&s->gb, 8);
+            p->data[2][0] = bitstream_read(&s->bc, 8);
             lefty         =
-            p->data[0][1] = get_bits(&s->gb, 8);
+            p->data[0][1] = bitstream_read(&s->bc, 8);
             leftu         =
-            p->data[1][0] = get_bits(&s->gb, 8);
-            p->data[0][0] = get_bits(&s->gb, 8);
+            p->data[1][0] = bitstream_read(&s->bc, 8);
+            p->data[0][0] = bitstream_read(&s->bc, 8);
 
             switch (s->predictor) {
             case LEFT:
@@ -712,16 +712,16 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         const int last_line = (height - 1) * p->linesize[0];
 
         if (s->bitstream_bpp == 32) {
-            lefta = p->data[0][last_line + A] = get_bits(&s->gb, 8);
-            leftr = p->data[0][last_line + R] = get_bits(&s->gb, 8);
-            leftg = p->data[0][last_line + G] = get_bits(&s->gb, 8);
-            leftb = p->data[0][last_line + B] = get_bits(&s->gb, 8);
+            lefta = p->data[0][last_line + A] = bitstream_read(&s->bc, 8);
+            leftr = p->data[0][last_line + R] = bitstream_read(&s->bc, 8);
+            leftg = p->data[0][last_line + G] = bitstream_read(&s->bc, 8);
+            leftb = p->data[0][last_line + B] = bitstream_read(&s->bc, 8);
         } else {
-            leftr = p->data[0][last_line + R] = get_bits(&s->gb, 8);
-            leftg = p->data[0][last_line + G] = get_bits(&s->gb, 8);
-            leftb = p->data[0][last_line + B] = get_bits(&s->gb, 8);
+            leftr = p->data[0][last_line + R] = bitstream_read(&s->bc, 8);
+            leftg = p->data[0][last_line + G] = bitstream_read(&s->bc, 8);
+            leftb = p->data[0][last_line + B] = bitstream_read(&s->bc, 8);
             lefta = p->data[0][last_line + A] = 255;
-            skip_bits(&s->gb, 8);
+            bitstream_skip(&s->bc, 8);
         }
 
         if (s->bgr32) {
@@ -766,7 +766,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
 
     *got_frame = 1;
 
-    return (get_bits_count(&s->gb) + 31) / 32 * 4 + table_size;
+    return (bitstream_tell(&s->bc) + 31) / 32 * 4 + table_size;
 }
 
 static av_cold int decode_end(AVCodecContext *avctx)
