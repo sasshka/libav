@@ -26,7 +26,7 @@
  */
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "golomb.h"
 #include "internal.h"
 #include "mathops.h"
@@ -258,7 +258,7 @@ static int encode_picture_ls(AVCodecContext *avctx, AVPacket *pkt,
     JPEGLSContext *ctx = avctx->priv_data;
     const AVFrame *const p = pict;
     PutBitContext pb, pb2;
-    GetBitContext gb;
+    BitstreamContext bc;
     uint8_t *buf2 = NULL;
     uint8_t *zero = NULL;
     uint8_t *cur  = NULL;
@@ -393,14 +393,14 @@ FF_ENABLE_DEPRECATION_WARNINGS
     size = put_bits_count(&pb2);
     flush_put_bits(&pb2);
     /* do escape coding */
-    init_get_bits(&gb, buf2, size);
+    bitstream_init(&bc, buf2, size);
     size -= 7;
-    while (get_bits_count(&gb) < size) {
+    while (bitstream_tell(&bc) < size) {
         int v;
-        v = get_bits(&gb, 8);
+        v = bitstream_read(&bc, 8);
         put_bits(&pb, 8, v);
         if (v == 0xFF) {
-            v = get_bits(&gb, 7);
+            v = bitstream_read(&bc, 7);
             put_bits(&pb, 8, v);
         }
     }
