@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "bytestream.h"
 #include "hq_hqadsp.h"
 
