@@ -29,7 +29,7 @@
 
 #include "avcodec.h"
 #include "dv_profile.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "me_cmp.h"
 
 typedef struct DVwork_chunk {
