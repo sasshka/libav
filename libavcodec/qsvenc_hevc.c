@@ -29,7 +29,6 @@
 
 #include "avcodec.h"
 #include "bytestream.h"
-#include "get_bits.h"
 #include "hevc.h"
 #include "h2645_parse.h"
 #include "internal.h"
@@ -54,7 +53,7 @@ static int generate_fake_vps(QSVEncContext *q, AVCodecContext *avctx)
     GetByteContext gbc;
     PutByteContext pbc;
 
-    GetBitContext gb;
+    BitstreamContext bc;
     H2645NAL sps_nal = { NULL };
     HEVCSPS sps = { 0 };
     HEVCVPS vps = { 0 };
@@ -75,23 +74,23 @@ static int generate_fake_vps(QSVEncContext *q, AVCodecContext *avctx)
         return ret;
     }
 
-    ret = init_get_bits8(&gb, sps_nal.data, sps_nal.size);
+    ret = bitstream_init8(&bc, sps_nal.data, sps_nal.size);
     if (ret < 0) {
         av_freep(&sps_nal.rbsp_buffer);
         return ret;
     }
 
-    get_bits(&gb, 1);
-    type = get_bits(&gb, 6);
+    bitstream_read(&bc, 1);
+    type = bitstream_read(&bc, 6);
     if (type != NAL_SPS) {
         av_log(avctx, AV_LOG_ERROR, "Unexpected NAL type in the extradata: %d\n",
                type);
         av_freep(&sps_nal.rbsp_buffer);
         return AVERROR_INVALIDDATA;
     }
-    get_bits(&gb, 9);
+    bitstream_read(&bc, 9);
 
-    ret = ff_hevc_parse_sps(&sps, &gb, &sps_id, 0, NULL, avctx);
+    ret = ff_hevc_parse_sps(&sps, &bc, &sps_id, 0, NULL, avctx);
     av_freep(&sps_nal.rbsp_buffer);
     if (ret < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error parsing the SPS\n");
