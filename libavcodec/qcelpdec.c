@@ -33,7 +33,7 @@
 #include "libavutil/float_dsp.h"
 #include "avcodec.h"
 #include "internal.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "qcelpdata.h"
 #include "celp_filters.h"
 #include "acelp_filters.h"
@@ -53,7 +53,7 @@ typedef enum {
 } qcelp_packet_rate;
 
 typedef struct QCELPContext {
-    GetBitContext     gb;
+    BitstreamContext     bc;
     qcelp_packet_rate bitrate;
     QCELPFrame        frame;    /**< unpacked data frame */
 
@@ -718,12 +718,12 @@ static int qcelp_decode_frame(AVCodecContext *avctx, void *data,
                                          qcelp_unpacking_bitmaps_lengths[q->bitrate];
         uint8_t *unpacked_data         = (uint8_t *)&q->frame;
 
-        init_get_bits(&q->gb, buf, 8 * buf_size);
+        bitstream_init(&q->bc, buf, 8 * buf_size);
 
         memset(&q->frame, 0, sizeof(QCELPFrame));
 
         for (; bitmaps < bitmaps_end; bitmaps++)
-            unpacked_data[bitmaps->index] |= get_bits(&q->gb, bitmaps->bitlen) << bitmaps->bitpos;
+            unpacked_data[bitmaps->index] |= bitstream_read(&q->bc, bitmaps->bitlen) << bitmaps->bitpos;
 
         // Check for erasures/blanks on rates 1, 1/4 and 1/8.
         if (q->frame.reserved) {
