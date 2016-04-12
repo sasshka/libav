@@ -25,7 +25,7 @@
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "internal.h"
 
 /**
@@ -192,16 +192,16 @@ static int pcx_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
             goto end;
         }
     } else if (nplanes == 1) {   /* all packed formats, max. 16 colors */
-        GetBitContext s;
+        BitstreamContext s;
 
         for (y = 0; y < h; y++) {
-            init_get_bits(&s, scanline, bytes_per_scanline << 3);
+            bitstream_init(&s, scanline, bytes_per_scanline << 3);
 
             buf = pcx_rle_decode(buf, buf_end,
                                  scanline, bytes_per_scanline, compressed);
 
             for (x = 0; x < w; x++)
-                ptr[x] = get_bits(&s, bits_per_pixel);
+                ptr[x] = bitstream_read(&s, bits_per_pixel);
             ptr += stride;
         }
     } else {    /* planar, 4, 8 or 16 colors */
