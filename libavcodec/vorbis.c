@@ -24,7 +24,7 @@
 
 #define BITSTREAM_READER_LE
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 
 #include "vorbis.h"
 
@@ -57,7 +57,7 @@ int ff_vorbis_len2vlc(uint8_t *bits, uint32_t *codes, unsigned num)
     unsigned i, j, p, code;
 
 #ifdef DEBUG
-    GetBitContext gb;
+    BitstreamContext bc;
 #endif
 
     for (p = 0; (bits[p] == 0) && (p < num); ++p)
@@ -73,9 +73,9 @@ int ff_vorbis_len2vlc(uint8_t *bits, uint32_t *codes, unsigned num)
 
 #ifdef DEBUG
     av_log(NULL, AV_LOG_INFO, " %u. of %u code len %d code %d - ", p, num, bits[p], codes[p]);
-    init_get_bits(&gb, (uint8_t *)&codes[p], bits[p]);
+    bitstream_init(&bc, (uint8_t *)&codes[p], bits[p]);
     for (i = 0; i < bits[p]; ++i)
-        av_log(NULL, AV_LOG_INFO, "%s", get_bits1(&gb) ? "1" : "0");
+        av_log(NULL, AV_LOG_INFO, "%s", bitstream_read_bit(&bc) ? "1" : "0");
     av_log(NULL, AV_LOG_INFO, "\n");
 #endif
 
@@ -101,9 +101,9 @@ int ff_vorbis_len2vlc(uint8_t *bits, uint32_t *codes, unsigned num)
 
 #ifdef DEBUG
         av_log(NULL, AV_LOG_INFO, " %d. code len %d code %d - ", p, bits[p], codes[p]);
-        init_get_bits(&gb, (uint8_t *)&codes[p], bits[p]);
+        bitstream_init(&bc, (uint8_t *)&codes[p], bits[p]);
         for (i = 0; i < bits[p]; ++i)
-            av_log(NULL, AV_LOG_INFO, "%s", get_bits1(&gb) ? "1" : "0");
+            av_log(NULL, AV_LOG_INFO, "%s", bitstream_read_bit(&bc) ? "1" : "0");
         av_log(NULL, AV_LOG_INFO, "\n");
 #endif
 
