@@ -19,7 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavcodec/get_bits.h"
+#include "libavcodec/bitstream.h"
 #include "libavcodec/put_bits.h"
 #include "libavcodec/avcodec.h"
 #include "libavcodec/mpeg4audio.h"
@@ -50,14 +50,14 @@ static const AVClass latm_muxer_class = {
 
 static int latm_decode_extradata(LATMContext *ctx, uint8_t *buf, int size)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     MPEG4AudioConfig m4ac;
 
-    init_get_bits(&gb, buf, size * 8);
+    bitstream_init8(&bc, buf, size);
     ctx->off = avpriv_mpeg4audio_get_config(&m4ac, buf, size * 8, 1);
     if (ctx->off < 0)
         return ctx->off;
-    skip_bits_long(&gb, ctx->off);
+    bitstream_skip(&bc, ctx->off);
 
     /* FIXME: are any formats not allowed in LATM? */
 
@@ -87,14 +87,14 @@ static int latm_write_frame_header(AVFormatContext *s, PutBitContext *bs)
 {
     LATMContext *ctx = s->priv_data;
     AVCodecParameters *par = s->streams[0]->codecpar;
-    GetBitContext gb;
+    BitstreamContext bc;
     int header_size;
 
     /* AudioMuxElement */
     put_bits(bs, 1, !!ctx->counter);
 
     if (!ctx->counter) {
-        init_get_bits(&gb, par->extradata, par->extradata_size * 8);
+        bitstream_init8(&bc, par->extradata, par->extradata_size);
 
         /* StreamMuxConfig */
         put_bits(bs, 1, 0); /* audioMuxVersion */
@@ -111,7 +111,7 @@ static int latm_write_frame_header(AVFormatContext *s, PutBitContext *bs)
             avpriv_copy_bits(bs, par->extradata, ctx->off + 3);
 
             if (!ctx->channel_conf) {
-                avpriv_copy_pce_data(bs, &gb);
+                avpriv_copy_pce_data(bs, &bc);
             }
         }
 
