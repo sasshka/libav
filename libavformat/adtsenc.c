@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavcodec/get_bits.h"
+#include "libavcodec/bitstream.h"
 #include "libavcodec/put_bits.h"
 #include "libavcodec/avcodec.h"
 #include "libavcodec/mpeg4audio.h"
@@ -41,16 +41,16 @@ typedef struct ADTSContext {
 
 static int adts_decode_extradata(AVFormatContext *s, ADTSContext *adts, uint8_t *buf, int size)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     PutBitContext pb;
     MPEG4AudioConfig m4ac;
     int off;
 
-    init_get_bits(&gb, buf, size * 8);
+    bitstream_init(&bc, buf, size * 8);
     off = avpriv_mpeg4audio_get_config(&m4ac, buf, size * 8, 1);
     if (off < 0)
         return off;
-    skip_bits_long(&gb, off);
+    bitstream_skip(&bc, off);
     adts->objecttype        = m4ac.object_type - 1;
     adts->sample_rate_index = m4ac.sampling_index;
     adts->channel_conf      = m4ac.chan_config;
@@ -63,15 +63,15 @@ static int adts_decode_extradata(AVFormatContext *s, ADTSContext *adts, uint8_t 
         av_log(s, AV_LOG_ERROR, "Escape sample rate index illegal in ADTS\n");
         return AVERROR_INVALIDDATA;
     }
-    if (get_bits(&gb, 1)) {
+    if (bitstream_read(&bc, 1)) {
         av_log(s, AV_LOG_ERROR, "960/120 MDCT window is not allowed in ADTS\n");
         return AVERROR_INVALIDDATA;
     }
-    if (get_bits(&gb, 1)) {
+    if (bitstream_read(&bc, 1)) {
         av_log(s, AV_LOG_ERROR, "Scalable configurations are not allowed in ADTS\n");
         return AVERROR_INVALIDDATA;
     }
-    if (get_bits(&gb, 1)) {
+    if (bitstream_read(&bc, 1)) {
         av_log(s, AV_LOG_ERROR, "Extension flag is not allowed in ADTS\n");
         return AVERROR_INVALIDDATA;
     }
@@ -79,7 +79,7 @@ static int adts_decode_extradata(AVFormatContext *s, ADTSContext *adts, uint8_t 
         init_put_bits(&pb, adts->pce_data, MAX_PCE_SIZE);
 
         put_bits(&pb, 3, 5); //ID_PCE
-        adts->pce_size = (avpriv_copy_pce_data(&pb, &gb) + 3) / 8;
+        adts->pce_size = (avpriv_copy_pce_data(&pb, &bc) + 3) / 8;
         flush_put_bits(&pb);
     }
 
