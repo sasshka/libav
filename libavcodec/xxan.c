@@ -25,7 +25,6 @@
 #include "libavutil/mem.h"
 #include "bytestream.h"
 #define BITSTREAM_READER_LE
-#include "get_bits.h"
 #include "internal.h"
 
 typedef struct XanContext {
