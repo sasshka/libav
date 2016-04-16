@@ -42,7 +42,7 @@
 #include "avio_internal.h"
 #include "riff.h"
 #include "isom.h"
-#include "libavcodec/get_bits.h"
+#include "libavcodec/bitstream.h"
 #include "id3v1.h"
 #include "mov_chan.h"
 #include "replaygain.h"
@@ -1997,7 +1997,7 @@ static int mov_read_stsz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     AVStream *st;
     MOVStreamContext *sc;
     unsigned int i, entries, sample_size, field_size, num_bytes;
-    GetBitContext gb;
+    BitstreamContext bc;
     unsigned char* buf;
     int ret;
 
@@ -2055,10 +2055,10 @@ static int mov_read_stsz(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return ret;
     }
 
-    init_get_bits(&gb, buf, 8*num_bytes);
+    bitstream_init(&bc, buf, 8*num_bytes);
 
     for (i = 0; i < entries && !pb->eof_reached; i++) {
-        sc->sample_sizes[i] = get_bits_long(&gb, field_size);
+        sc->sample_sizes[i] = bitstream_read(&bc, field_size);
         sc->data_size += sc->sample_sizes[i];
     }
 
