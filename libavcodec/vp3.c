@@ -36,7 +36,7 @@
 #include "libavutil/imgutils.h"
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "hpeldsp.h"
 #include "internal.h"
 #include "mathops.h"
@@ -424,7 +424,7 @@ static void init_loop_filter(Vp3DecodeContext *s)
  * This function unpacks all of the superblock/macroblock/fragment coding
  * information from the bitstream.
  */
-static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
+static int unpack_superblocks(Vp3DecodeContext *s, BitstreamContext *bc)
 {
     int superblock_starts[3] = {
         0, s->u_superblock_start, s->v_superblock_start
@@ -442,19 +442,19 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
         memset(s->superblock_coding, SB_FULLY_CODED, s->superblock_count);
     } else {
         /* unpack the list of partially-coded superblocks */
-        bit         = get_bits1(gb) ^ 1;
+        bit         = bitstream_read_bit(bc) ^ 1;
         current_run = 0;
 
-        while (current_superblock < s->superblock_count && get_bits_left(gb) > 0) {
+        while (current_superblock < s->superblock_count && bitstream_bits_left(bc) > 0) {
             if (s->theora && current_run == MAXIMUM_LONG_BIT_RUN)
-                bit = get_bits1(gb);
+                bit = bitstream_read_bit(bc);
             else
                 bit ^= 1;
 
-            current_run = get_vlc2(gb, s->superblock_run_length_vlc.table,
+            current_run = bitstream_read_vlc(bc, s->superblock_run_length_vlc.table,
                                    6, 2) + 1;
             if (current_run == 34)
-                current_run += get_bits(gb, 12);
+                current_run += bitstream_read(bc, 12);
 
             if (current_superblock + current_run > s->superblock_count) {
                 av_log(s->avctx, AV_LOG_ERROR,
@@ -475,20 +475,20 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
             int superblocks_decoded = 0;
 
             current_superblock = 0;
-            bit                = get_bits1(gb) ^ 1;
+            bit                = bitstream_read_bit(bc) ^ 1;
             current_run        = 0;
 
             while (superblocks_decoded < s->superblock_count - num_partial_superblocks &&
-                   get_bits_left(gb) > 0) {
+                   bitstream_bits_left(bc) > 0) {
                 if (s->theora && current_run == MAXIMUM_LONG_BIT_RUN)
-                    bit = get_bits1(gb);
+                    bit = bitstream_read_bit(bc);
                 else
                     bit ^= 1;
 
-                current_run = get_vlc2(gb, s->superblock_run_length_vlc.table,
+                current_run = bitstream_read_vlc(bc, s->superblock_run_length_vlc.table,
                                        6, 2) + 1;
                 if (current_run == 34)
-                    current_run += get_bits(gb, 12);
+                    current_run += bitstream_read(bc, 12);
 
                 for (j = 0; j < current_run; current_superblock++) {
                     if (current_superblock >= s->superblock_count) {
@@ -511,7 +511,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
          * unpacking fragment codings */
         if (num_partial_superblocks) {
             current_run = 0;
-            bit         = get_bits1(gb);
+            bit         = bitstream_read_bit(bc);
             /* toggle the bit because as soon as the first run length is
              * fetched the bit will be toggled again */
             bit ^= 1;
@@ -529,7 +529,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
                                          : s->y_superblock_count);
         int num_coded_frags = 0;
 
-        for (i = sb_start; i < sb_end && get_bits_left(gb) > 0; i++) {
+        for (i = sb_start; i < sb_end && bitstream_bits_left(bc) > 0; i++) {
             /* iterate through all 16 fragments in a superblock */
             for (j = 0; j < 16; j++) {
                 /* if the fragment is in bounds, check its coding status */
@@ -542,7 +542,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
                          * that cares about the fragment coding runs */
                         if (current_run-- == 0) {
                             bit        ^= 1;
-                            current_run = get_vlc2(gb, s->fragment_run_length_vlc.table, 5, 2);
+                            current_run = bitstream_read_vlc(bc, s->fragment_run_length_vlc.table, 5, 2);
                         }
                         coded = bit;
                     }
@@ -576,7 +576,7 @@ static int unpack_superblocks(Vp3DecodeContext *s, GetBitContext *gb)
  * This function unpacks all the coding mode data for individual macroblocks
  * from the bitstream.
  */
-static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
+static int unpack_modes(Vp3DecodeContext *s, BitstreamContext *bc)
 {
     int i, j, k, sb_x, sb_y;
     int scheme;
@@ -592,14 +592,14 @@ static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
             s->all_fragments[i].coding_method = MODE_INTRA;
     } else {
         /* fetch the mode coding scheme for this frame */
-        scheme = get_bits(gb, 3);
+        scheme = bitstream_read(bc, 3);
 
         /* is it a custom coding scheme? */
         if (scheme == 0) {
             for (i = 0; i < 8; i++)
                 custom_mode_alphabet[i] = MODE_INTER_NO_MV;
             for (i = 0; i < 8; i++)
-                custom_mode_alphabet[get_bits(gb, 3)] = i;
+                custom_mode_alphabet[bitstream_read(bc, 3)] = i;
             alphabet = custom_mode_alphabet;
         } else
             alphabet = ModeAlphabet[scheme - 1];
@@ -608,7 +608,7 @@ static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
          * coded fragments */
         for (sb_y = 0; sb_y < s->y_superblock_height; sb_y++) {
             for (sb_x = 0; sb_x < s->y_superblock_width; sb_x++) {
-                if (get_bits_left(gb) <= 0)
+                if (bitstream_bits_left(bc) <= 0)
                     return -1;
 
                 for (j = 0; j < 4; j++) {
@@ -638,9 +638,9 @@ static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
 
                     /* mode 7 means get 3 bits for each coding mode */
                     if (scheme == 7)
-                        coding_mode = get_bits(gb, 3);
+                        coding_mode = bitstream_read(bc, 3);
                     else
-                        coding_mode = alphabet[get_vlc2(gb, s->mode_code_vlc.table, 3, 3)];
+                        coding_mode = alphabet[bitstream_read_vlc(bc, s->mode_code_vlc.table, 3, 3)];
 
                     s->macroblock_coding[current_macroblock] = coding_mode;
                     for (k = 0; k < 4; k++) {
@@ -685,7 +685,7 @@ static int unpack_modes(Vp3DecodeContext *s, GetBitContext *gb)
  * This function unpacks all the motion vectors for the individual
  * macroblocks from the bitstream.
  */
-static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
+static int unpack_vectors(Vp3DecodeContext *s, BitstreamContext *bc)
 {
     int j, k, sb_x, sb_y;
     int coding_mode;
@@ -703,13 +703,13 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
         return 0;
 
     /* coding mode 0 is the VLC scheme; 1 is the fixed code scheme */
-    coding_mode = get_bits1(gb);
+    coding_mode = bitstream_read_bit(bc);
 
     /* iterate through all of the macroblocks that contain 1 or more
      * coded fragments */
     for (sb_y = 0; sb_y < s->y_superblock_height; sb_y++) {
         for (sb_x = 0; sb_x < s->y_superblock_width; sb_x++) {
-            if (get_bits_left(gb) <= 0)
+            if (bitstream_bits_left(bc) <= 0)
                 return -1;
 
             for (j = 0; j < 4; j++) {
@@ -727,11 +727,11 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
                 case MODE_GOLDEN_MV:
                     /* all 6 fragments use the same motion vector */
                     if (coding_mode == 0) {
-                        motion_x[0] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
-                        motion_y[0] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
+                        motion_x[0] = motion_vector_table[bitstream_read_vlc(bc, s->motion_vector_vlc.table, 6, 2)];
+                        motion_y[0] = motion_vector_table[bitstream_read_vlc(bc, s->motion_vector_vlc.table, 6, 2)];
                     } else {
-                        motion_x[0] = fixed_motion_vector_table[get_bits(gb, 6)];
-                        motion_y[0] = fixed_motion_vector_table[get_bits(gb, 6)];
+                        motion_x[0] = fixed_motion_vector_table[bitstream_read(bc, 6)];
+                        motion_y[0] = fixed_motion_vector_table[bitstream_read(bc, 6)];
                     }
 
                     /* vector maintenance, only on MODE_INTER_PLUS_MV */
@@ -754,11 +754,11 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
                         current_fragment = BLOCK_Y * s->fragment_width[0] + BLOCK_X;
                         if (s->all_fragments[current_fragment].coding_method != MODE_COPY) {
                             if (coding_mode == 0) {
-                                motion_x[k] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
-                                motion_y[k] = motion_vector_table[get_vlc2(gb, s->motion_vector_vlc.table, 6, 2)];
+                                motion_x[k] = motion_vector_table[bitstream_read_vlc(bc, s->motion_vector_vlc.table, 6, 2)];
+                                motion_y[k] = motion_vector_table[bitstream_read_vlc(bc, s->motion_vector_vlc.table, 6, 2)];
                             } else {
-                                motion_x[k] = fixed_motion_vector_table[get_bits(gb, 6)];
-                                motion_y[k] = fixed_motion_vector_table[get_bits(gb, 6)];
+                                motion_x[k] = fixed_motion_vector_table[bitstream_read(bc, 6)];
+                                motion_y[k] = fixed_motion_vector_table[bitstream_read(bc, 6)];
                             }
                             last_motion_x = motion_x[k];
                             last_motion_y = motion_y[k];
@@ -863,7 +863,7 @@ static int unpack_vectors(Vp3DecodeContext *s, GetBitContext *gb)
     return 0;
 }
 
-static int unpack_block_qpis(Vp3DecodeContext *s, GetBitContext *gb)
+static int unpack_block_qpis(Vp3DecodeContext *s, BitstreamContext *bc)
 {
     int qpi, i, j, bit, run_length, blocks_decoded, num_blocks_at_qpi;
     int num_blocks = s->total_num_coded_frags;
@@ -871,18 +871,18 @@ static int unpack_block_qpis(Vp3DecodeContext *s, GetBitContext *gb)
     for (qpi = 0; qpi < s->nqps - 1 && num_blocks > 0; qpi++) {
         i = blocks_decoded = num_blocks_at_qpi = 0;
 
-        bit        = get_bits1(gb) ^ 1;
+        bit        = bitstream_read_bit(bc) ^ 1;
         run_length = 0;
 
         do {
             if (run_length == MAXIMUM_LONG_BIT_RUN)
-                bit = get_bits1(gb);
+                bit = bitstream_read_bit(bc);
             else
                 bit ^= 1;
 
-            run_length = get_vlc2(gb, s->superblock_run_length_vlc.table, 6, 2) + 1;
+            run_length = bitstream_read_vlc(bc, s->superblock_run_length_vlc.table, 6, 2) + 1;
             if (run_length == 34)
-                run_length += get_bits(gb, 12);
+                run_length += bitstream_read(bc, 12);
             blocks_decoded += run_length;
 
             if (!bit)
@@ -897,7 +897,7 @@ static int unpack_block_qpis(Vp3DecodeContext *s, GetBitContext *gb)
                     j++;
                 }
             }
-        } while (blocks_decoded < num_blocks && get_bits_left(gb) > 0);
+        } while (blocks_decoded < num_blocks && bitstream_bits_left(bc) > 0);
 
         num_blocks -= num_blocks_at_qpi;
     }
@@ -917,7 +917,7 @@ static int unpack_block_qpis(Vp3DecodeContext *s, GetBitContext *gb)
  * left in the current fragment range, 3 would be returned so that it could
  * be passed into the next call to this same function.
  */
-static int unpack_vlcs(Vp3DecodeContext *s, GetBitContext *gb,
+static int unpack_vlcs(Vp3DecodeContext *s, BitstreamContext *bc,
                        VLC *table, int coeff_index,
                        int plane,
                        int eob_run)
@@ -955,14 +955,14 @@ static int unpack_vlcs(Vp3DecodeContext *s, GetBitContext *gb,
     if (blocks_ended)
         dct_tokens[j++] = blocks_ended << 2;
 
-    while (coeff_i < num_coeffs && get_bits_left(gb) > 0) {
+    while (coeff_i < num_coeffs && bitstream_bits_left(bc) > 0) {
         /* decode a VLC into a token */
-        token = get_vlc2(gb, vlc_table, 11, 3);
+        token = bitstream_read_vlc(bc, vlc_table, 11, 3);
         /* use the token to get a zero run, a coefficient, and an eob run */
         if ((unsigned) token <= 6U) {
             eob_run = eob_run_base[token];
             if (eob_run_get_bits[token])
-                eob_run += get_bits(gb, eob_run_get_bits[token]);
+                eob_run += bitstream_read(bc, eob_run_get_bits[token]);
 
             // record only the number of blocks ended in this plane,
             // any spill will be recorded in the next plane.
@@ -980,12 +980,12 @@ static int unpack_vlcs(Vp3DecodeContext *s, GetBitContext *gb,
         } else if (token >= 0) {
             bits_to_get = coeff_get_bits[token];
             if (bits_to_get)
-                bits_to_get = get_bits(gb, bits_to_get);
+                bits_to_get = bitstream_read(bc, bits_to_get);
             coeff = coeff_tables[token][bits_to_get];
 
             zero_run = zero_run_base[token];
             if (zero_run_get_bits[token])
-                zero_run += get_bits(gb, zero_run_get_bits[token]);
+                zero_run += bitstream_read(bc, zero_run_get_bits[token]);
 
             if (zero_run) {
                 dct_tokens[j++] = TOKEN_ZERO_RUN(coeff, zero_run);
@@ -1044,7 +1044,7 @@ static void reverse_dc_prediction(Vp3DecodeContext *s,
  * This function unpacks all of the DCT coefficient data from the
  * bitstream.
  */
-static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
+static int unpack_dct_coeffs(Vp3DecodeContext *s, BitstreamContext *bc)
 {
     int i;
     int dc_y_table;
@@ -1058,11 +1058,11 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
     s->dct_tokens[0][0] = s->dct_tokens_base;
 
     /* fetch the DC table indexes */
-    dc_y_table = get_bits(gb, 4);
-    dc_c_table = get_bits(gb, 4);
+    dc_y_table = bitstream_read(bc, 4);
+    dc_c_table = bitstream_read(bc, 4);
 
     /* unpack the Y plane DC coefficients */
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_y_table], 0,
+    residual_eob_run = unpack_vlcs(s, bc, &s->dc_vlc[dc_y_table], 0,
                                    0, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
@@ -1071,11 +1071,11 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
     reverse_dc_prediction(s, 0, s->fragment_width[0], s->fragment_height[0]);
 
     /* unpack the C plane DC coefficients */
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_c_table], 0,
+    residual_eob_run = unpack_vlcs(s, bc, &s->dc_vlc[dc_c_table], 0,
                                    1, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
-    residual_eob_run = unpack_vlcs(s, gb, &s->dc_vlc[dc_c_table], 0,
+    residual_eob_run = unpack_vlcs(s, bc, &s->dc_vlc[dc_c_table], 0,
                                    2, residual_eob_run);
     if (residual_eob_run < 0)
         return residual_eob_run;
@@ -1089,8 +1089,8 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
     }
 
     /* fetch the AC table indexes */
-    ac_y_table = get_bits(gb, 4);
-    ac_c_table = get_bits(gb, 4);
+    ac_y_table = bitstream_read(bc, 4);
+    ac_c_table = bitstream_read(bc, 4);
 
     /* build tables of AC VLC tables */
     for (i = 1; i <= 5; i++) {
@@ -1112,16 +1112,16 @@ static int unpack_dct_coeffs(Vp3DecodeContext *s, GetBitContext *gb)
 
     /* decode all AC coefficients */
     for (i = 1; i <= 63; i++) {
-        residual_eob_run = unpack_vlcs(s, gb, y_tables[i], i,
+        residual_eob_run = unpack_vlcs(s, bc, y_tables[i], i,
                                        0, residual_eob_run);
         if (residual_eob_run < 0)
             return residual_eob_run;
 
-        residual_eob_run = unpack_vlcs(s, gb, c_tables[i], i,
+        residual_eob_run = unpack_vlcs(s, bc, c_tables[i], i,
                                        1, residual_eob_run);
         if (residual_eob_run < 0)
             return residual_eob_run;
-        residual_eob_run = unpack_vlcs(s, gb, c_tables[i], i,
+        residual_eob_run = unpack_vlcs(s, bc, c_tables[i], i,
                                        2, residual_eob_run);
         if (residual_eob_run < 0)
             return residual_eob_run;
@@ -1986,27 +1986,27 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     const uint8_t *buf  = avpkt->data;
     int buf_size        = avpkt->size;
     Vp3DecodeContext *s = avctx->priv_data;
-    GetBitContext gb;
+    BitstreamContext bc;
     int i, ret;
 
-    init_get_bits(&gb, buf, buf_size * 8);
+    bitstream_init(&bc, buf, buf_size * 8);
 
-    if (s->theora && get_bits1(&gb)) {
+    if (s->theora && bitstream_read_bit(&bc)) {
         av_log(avctx, AV_LOG_ERROR,
                "Header packet passed to frame decoder, skipping\n");
         return -1;
     }
 
-    s->keyframe = !get_bits1(&gb);
+    s->keyframe = !bitstream_read_bit(&bc);
     if (!s->theora)
-        skip_bits(&gb, 1);
+        bitstream_skip(&bc, 1);
     for (i = 0; i < 3; i++)
         s->last_qps[i] = s->qps[i];
 
     s->nqps = 0;
     do {
-        s->qps[s->nqps++] = get_bits(&gb, 6);
-    } while (s->theora >= 0x030200 && s->nqps < 3 && get_bits1(&gb));
+        s->qps[s->nqps++] = bitstream_read(&bc, 6);
+    } while (s->theora >= 0x030200 && s->nqps < 3 && bitstream_read_bit(&bc));
     for (i = s->nqps; i < 3; i++)
         s->qps[i] = -1;
 
@@ -2042,20 +2042,20 @@ static int vp3_decode_frame(AVCodecContext *avctx,
 
     if (s->keyframe) {
         if (!s->theora) {
-            skip_bits(&gb, 4); /* width code */
-            skip_bits(&gb, 4); /* height code */
+            bitstream_skip(&bc, 4); /* width code */
+            bitstream_skip(&bc, 4); /* height code */
             if (s->version) {
-                s->version = get_bits(&gb, 5);
+                s->version = bitstream_read(&bc, 5);
                 if (avctx->frame_number == 0)
                     av_log(s->avctx, AV_LOG_DEBUG,
                            "VP version: %d\n", s->version);
             }
         }
         if (s->version || s->theora) {
-            if (get_bits1(&gb))
+            if (bitstream_read_bit(&bc))
                 av_log(s->avctx, AV_LOG_ERROR,
                        "Warning, unsupported keyframe coding type?!\n");
-            skip_bits(&gb, 2); /* reserved? */
+            bitstream_skip(&bc, 2); /* reserved? */
         }
     } else {
         if (!s->golden_frame.f->data[0]) {
@@ -2079,23 +2079,23 @@ static int vp3_decode_frame(AVCodecContext *avctx,
     memset(s->all_fragments, 0, s->fragment_count * sizeof(Vp3Fragment));
     ff_thread_finish_setup(avctx);
 
-    if (unpack_superblocks(s, &gb)) {
+    if (unpack_superblocks(s, &bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_superblocks\n");
         goto error;
     }
-    if (unpack_modes(s, &gb)) {
+    if (unpack_modes(s, &bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_modes\n");
         goto error;
     }
-    if (unpack_vectors(s, &gb)) {
+    if (unpack_vectors(s, &bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_vectors\n");
         goto error;
     }
-    if (unpack_block_qpis(s, &gb)) {
+    if (unpack_block_qpis(s, &bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_block_qpis\n");
         goto error;
     }
-    if (unpack_dct_coeffs(s, &gb)) {
+    if (unpack_dct_coeffs(s, &bc)) {
         av_log(s->avctx, AV_LOG_ERROR, "error in unpack_dct_coeffs\n");
         goto error;
     }
@@ -2147,17 +2147,17 @@ error:
     return -1;
 }
 
-static int read_huffman_tree(AVCodecContext *avctx, GetBitContext *gb)
+static int read_huffman_tree(AVCodecContext *avctx, BitstreamContext *bc)
 {
     Vp3DecodeContext *s = avctx->priv_data;
 
-    if (get_bits1(gb)) {
+    if (bitstream_read_bit(bc)) {
         int token;
         if (s->entries >= 32) { /* overflow */
             av_log(avctx, AV_LOG_ERROR, "huffman tree overflow\n");
             return -1;
         }
-        token = get_bits(gb, 5);
+        token = bitstream_read(bc, 5);
         ff_dlog(avctx, "hti %d hbits %x token %d entry : %d size %d\n",
                 s->hti, s->hbits, token, s->entries, s->huff_code_size);
         s->huffman_table[s->hti][token][0] = s->hbits;
@@ -2170,10 +2170,10 @@ static int read_huffman_tree(AVCodecContext *avctx, GetBitContext *gb)
         }
         s->huff_code_size++;
         s->hbits <<= 1;
-        if (read_huffman_tree(avctx, gb))
+        if (read_huffman_tree(avctx, bc))
             return -1;
         s->hbits |= 1;
-        if (read_huffman_tree(avctx, gb))
+        if (read_huffman_tree(avctx, bc))
             return -1;
         s->hbits >>= 1;
         s->huff_code_size--;
@@ -2203,7 +2203,7 @@ static const enum AVPixelFormat theora_pix_fmts[4] = {
     AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P
 };
 
-static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
+static int theora_decode_header(AVCodecContext *avctx, BitstreamContext *bc)
 {
     Vp3DecodeContext *s = avctx->priv_data;
     int visible_width, visible_height, colorspace;
@@ -2211,7 +2211,7 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     int ret;
     AVRational fps, aspect;
 
-    s->theora = get_bits_long(gb, 24);
+    s->theora = bitstream_read(bc, 24);
     av_log(avctx, AV_LOG_DEBUG, "Theora bitstream version %X\n", s->theora);
 
     /* 3.2.0 aka alpha3 has the same frame orientation as original vp3
@@ -2223,16 +2223,16 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     }
 
     visible_width  =
-    s->width       = get_bits(gb, 16) << 4;
+    s->width       = bitstream_read(bc, 16) << 4;
     visible_height =
-    s->height      = get_bits(gb, 16) << 4;
+    s->height      = bitstream_read(bc, 16) << 4;
 
     if (s->theora >= 0x030200) {
-        visible_width  = get_bits_long(gb, 24);
-        visible_height = get_bits_long(gb, 24);
+        visible_width  = bitstream_read(bc, 24);
+        visible_height = bitstream_read(bc, 24);
 
-        offset_x = get_bits(gb, 8); /* offset x */
-        offset_y = get_bits(gb, 8); /* offset y, from bottom */
+        offset_x = bitstream_read(bc, 8); /* offset x */
+        offset_y = bitstream_read(bc, 8); /* offset y, from bottom */
     }
 
     /* sanity check */
@@ -2246,8 +2246,8 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
         return AVERROR_INVALIDDATA;
     }
 
-    fps.num = get_bits_long(gb, 32);
-    fps.den = get_bits_long(gb, 32);
+    fps.num = bitstream_read(bc, 32);
+    fps.den = bitstream_read(bc, 32);
     if (fps.num && fps.den) {
         if (fps.num < 0 || fps.den < 0) {
             av_log(avctx, AV_LOG_ERROR, "Invalid framerate\n");
@@ -2257,8 +2257,8 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
                   fps.den, fps.num, 1 << 30);
     }
 
-    aspect.num = get_bits_long(gb, 24);
-    aspect.den = get_bits_long(gb, 24);
+    aspect.num = bitstream_read(bc, 24);
+    aspect.den = bitstream_read(bc, 24);
     if (aspect.num && aspect.den) {
         av_reduce(&avctx->sample_aspect_ratio.num,
                   &avctx->sample_aspect_ratio.den,
@@ -2267,16 +2267,16 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     }
 
     if (s->theora < 0x030200)
-        skip_bits(gb, 5); /* keyframe frequency force */
-    colorspace = get_bits(gb, 8);
-    skip_bits(gb, 24); /* bitrate */
+        bitstream_skip(bc, 5); /* keyframe frequency force */
+    colorspace = bitstream_read(bc, 8);
+    bitstream_skip(bc, 24); /* bitrate */
 
-    skip_bits(gb, 6); /* quality hint */
+    bitstream_skip(bc, 6); /* quality hint */
 
     if (s->theora >= 0x030200) {
-        skip_bits(gb, 5); /* keyframe frequency force */
-        avctx->pix_fmt = theora_pix_fmts[get_bits(gb, 2)];
-        skip_bits(gb, 3); /* reserved */
+        bitstream_skip(bc, 5); /* keyframe frequency force */
+        avctx->pix_fmt = theora_pix_fmts[bitstream_read(bc, 2)];
+        bitstream_skip(bc, 3); /* reserved */
     }
 
     ret = ff_set_dimensions(avctx, s->width, s->height);
@@ -2312,37 +2312,37 @@ static int theora_decode_header(AVCodecContext *avctx, GetBitContext *gb)
     return 0;
 }
 
-static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
+static int theora_decode_tables(AVCodecContext *avctx, BitstreamContext *bc)
 {
     Vp3DecodeContext *s = avctx->priv_data;
     int i, n, matrices, inter, plane;
 
     if (s->theora >= 0x030200) {
-        n = get_bits(gb, 3);
+        n = bitstream_read(bc, 3);
         /* loop filter limit values table */
         if (n)
             for (i = 0; i < 64; i++)
-                s->filter_limit_values[i] = get_bits(gb, n);
+                s->filter_limit_values[i] = bitstream_read(bc, n);
     }
 
     if (s->theora >= 0x030200)
-        n = get_bits(gb, 4) + 1;
+        n = bitstream_read(bc, 4) + 1;
     else
         n = 16;
     /* quality threshold table */
     for (i = 0; i < 64; i++)
-        s->coded_ac_scale_factor[i] = get_bits(gb, n);
+        s->coded_ac_scale_factor[i] = bitstream_read(bc, n);
 
     if (s->theora >= 0x030200)
-        n = get_bits(gb, 4) + 1;
+        n = bitstream_read(bc, 4) + 1;
     else
         n = 16;
     /* dc scale factor table */
     for (i = 0; i < 64; i++)
-        s->coded_dc_scale_factor[i] = get_bits(gb, n);
+        s->coded_dc_scale_factor[i] = bitstream_read(bc, n);
 
     if (s->theora >= 0x030200)
-        matrices = get_bits(gb, 9) + 1;
+        matrices = bitstream_read(bc, 9) + 1;
     else
         matrices = 3;
 
@@ -2353,16 +2353,16 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
 
     for (n = 0; n < matrices; n++)
         for (i = 0; i < 64; i++)
-            s->base_matrix[n][i] = get_bits(gb, 8);
+            s->base_matrix[n][i] = bitstream_read(bc, 8);
 
     for (inter = 0; inter <= 1; inter++) {
         for (plane = 0; plane <= 2; plane++) {
             int newqr = 1;
             if (inter || plane > 0)
-                newqr = get_bits1(gb);
+                newqr = bitstream_read_bit(bc);
             if (!newqr) {
                 int qtj, plj;
-                if (inter && get_bits1(gb)) {
+                if (inter && bitstream_read_bit(bc)) {
                     qtj = 0;
                     plj = plane;
                 } else {
@@ -2379,7 +2379,7 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
                 int qi  = 0;
 
                 for (;;) {
-                    i = get_bits(gb, av_log2(matrices - 1) + 1);
+                    i = bitstream_read(bc, av_log2(matrices - 1) + 1);
                     if (i >= matrices) {
                         av_log(avctx, AV_LOG_ERROR,
                                "invalid base matrix index\n");
@@ -2388,7 +2388,7 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
                     s->qr_base[inter][plane][qri] = i;
                     if (qi >= 63)
                         break;
-                    i = get_bits(gb, av_log2(63 - qi) + 1) + 1;
+                    i = bitstream_read(bc, av_log2(63 - qi) + 1) + 1;
                     s->qr_size[inter][plane][qri++] = i;
                     qi += i;
                 }
@@ -2406,12 +2406,12 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
     for (s->hti = 0; s->hti < 80; s->hti++) {
         s->entries        = 0;
         s->huff_code_size = 1;
-        if (!get_bits1(gb)) {
+        if (!bitstream_read_bit(bc)) {
             s->hbits = 0;
-            if (read_huffman_tree(avctx, gb))
+            if (read_huffman_tree(avctx, bc))
                 return -1;
             s->hbits = 1;
-            if (read_huffman_tree(avctx, gb))
+            if (read_huffman_tree(avctx, bc))
                 return -1;
         }
     }
@@ -2424,7 +2424,7 @@ static int theora_decode_tables(AVCodecContext *avctx, GetBitContext *gb)
 static av_cold int theora_decode_init(AVCodecContext *avctx)
 {
     Vp3DecodeContext *s = avctx->priv_data;
-    GetBitContext gb;
+    BitstreamContext bc;
     int ptype;
     uint8_t *header_start[3];
     int header_len[3];
@@ -2446,9 +2446,9 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
     for (i = 0; i < 3; i++) {
         if (header_len[i] <= 0)
             continue;
-        init_get_bits(&gb, header_start[i], header_len[i] * 8);
+        bitstream_init(&bc, header_start[i], header_len[i] * 8);
 
-        ptype = get_bits(&gb, 8);
+        ptype = bitstream_read(&bc, 8);
 
         if (!(ptype & 0x80)) {
             av_log(avctx, AV_LOG_ERROR, "Invalid extradata!\n");
@@ -2456,18 +2456,18 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
         }
 
         // FIXME: Check for this as well.
-        skip_bits_long(&gb, 6 * 8); /* "theora" */
+        bitstream_skip(&bc, 6 * 8); /* "theora" */
 
         switch (ptype) {
         case 0x80:
-            theora_decode_header(avctx, &gb);
+            theora_decode_header(avctx, &bc);
             break;
         case 0x81:
 // FIXME: is this needed? it breaks sometimes
-//            theora_decode_comments(avctx, gb);
+//            theora_decode_comments(avctx, bc);
             break;
         case 0x82:
-            if (theora_decode_tables(avctx, &gb))
+            if (theora_decode_tables(avctx, &bc))
                 return -1;
             break;
         default:
@@ -2475,10 +2475,10 @@ static av_cold int theora_decode_init(AVCodecContext *avctx)
                    "Unknown Theora config packet: %d\n", ptype & ~0x80);
             break;
         }
-        if (ptype != 0x81 && 8 * header_len[i] != get_bits_count(&gb))
+        if (ptype != 0x81 && 8 * header_len[i] != bitstream_tell(&bc))
             av_log(avctx, AV_LOG_WARNING,
                    "%d bits left in packet %X\n",
-                   8 * header_len[i] - get_bits_count(&gb), ptype);
+                   8 * header_len[i] - bitstream_tell(&bc), ptype);
         if (s->theora < 0x030200)
             break;
     }

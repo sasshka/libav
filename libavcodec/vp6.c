@@ -30,7 +30,6 @@
 #include <stdlib.h>
 
 #include "avcodec.h"
-#include "get_bits.h"
 #include "huffman.h"
 #include "internal.h"
 
@@ -163,7 +162,7 @@ static int vp6_parse_header(VP56Context *s, const uint8_t *buf, int buf_size,
         }
         if (s->use_huffman) {
             s->parse_coeff = vp6_parse_coeff_huffman;
-            init_get_bits(&s->gb, buf, buf_size<<3);
+            bitstream_init(&s->bc, buf, buf_size<<3);
         } else {
             ff_vp56_init_range_decoder(&s->cc, buf, buf_size);
             s->ccp = &s->cc;
@@ -370,12 +369,12 @@ static void vp6_parse_vector_adjustment(VP56Context *s, VP56mv *vect)
  */
 static unsigned vp6_get_nb_null(VP56Context *s)
 {
-    unsigned val = get_bits(&s->gb, 2);
+    unsigned val = bitstream_read(&s->bc, 2);
     if (val == 2)
-        val += get_bits(&s->gb, 2);
+        val += bitstream_read(&s->bc, 2);
     else if (val == 3) {
-        val = get_bits1(&s->gb) << 2;
-        val = 6+val + get_bits(&s->gb, 2+val);
+        val = bitstream_read_bit(&s->bc) << 2;
+        val = 6 + val + bitstream_read(&s->bc, 2 + val);
     }
     return val;
 }
@@ -401,15 +400,15 @@ static void vp6_parse_coeff_huffman(VP56Context *s)
                 if (coeff_idx)
                     break;
             } else {
-                if (get_bits_left(&s->gb) <= 0)
+                if (bitstream_bits_left(&s->bc) <= 0)
                     return;
-                coeff = get_vlc2(&s->gb, vlc_coeff->table, FF_HUFFMAN_BITS, 3);
+                coeff = bitstream_read_vlc(&s->bc, vlc_coeff->table, FF_HUFFMAN_BITS, 3);
                 if (coeff == 0) {
                     if (coeff_idx) {
                         int pt = (coeff_idx >= 6);
-                        run += get_vlc2(&s->gb, s->runv_vlc[pt].table, FF_HUFFMAN_BITS, 3);
+                        run += bitstream_read_vlc(&s->bc, s->runv_vlc[pt].table, FF_HUFFMAN_BITS, 3);
                         if (run >= 9)
-                            run += get_bits(&s->gb, 6);
+                            run += bitstream_read(&s->bc, 6);
                     } else
                         s->nb_null[0][pt] = vp6_get_nb_null(s);
                     ct = 0;
@@ -420,9 +419,9 @@ static void vp6_parse_coeff_huffman(VP56Context *s)
                 } else {
                     int coeff2 = ff_vp56_coeff_bias[coeff];
                     if (coeff > 4)
-                        coeff2 += get_bits(&s->gb, coeff <= 9 ? coeff - 4 : 11);
+                        coeff2 += bitstream_read(&s->bc, coeff <= 9 ? coeff - 4 : 11);
                     ct = 1 + (coeff2 > 1);
-                    sign = get_bits1(&s->gb);
+                    sign = bitstream_read_bit(&s->bc);
                     coeff2 = (coeff2 ^ -sign) + sign;
                     if (coeff_idx)
                         coeff2 *= s->dequant_ac;

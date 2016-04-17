@@ -264,7 +264,7 @@ typedef struct VP9Block {
 typedef struct VP9Context {
     VP9DSPContext dsp;
     VideoDSPContext vdsp;
-    GetBitContext gb;
+    BitstreamContext bc;
     VP56RangeCoder c;
     VP56RangeCoder *c_b;
     unsigned c_b_size;

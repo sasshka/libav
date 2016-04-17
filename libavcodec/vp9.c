@@ -24,7 +24,6 @@
 #include "libavutil/avassert.h"
 
 #include "avcodec.h"
-#include "get_bits.h"
 #include "internal.h"
 #include "videodsp.h"
 #include "vp56.h"
@@ -96,10 +95,10 @@ static int update_size(AVCodecContext *avctx, int w, int h)
 }
 
 // The sign bit is at the end, not the start, of a bit sequence
-static av_always_inline int get_bits_with_sign(GetBitContext *gb, int n)
+static av_always_inline int get_bits_with_sign(BitstreamContext *bc, int n)
 {
-    int v = get_bits(gb, n);
-    return get_bits1(gb) ? -v : v;
+    int v = bitstream_read(bc, n);
+    return bitstream_read_bit(bc) ? -v : v;
 }
 
 static av_always_inline int inv_recenter_nonneg(int v, int m)
@@ -181,55 +180,55 @@ static int decode_frame_header(AVCodecContext *avctx,
     const uint8_t *data2;
 
     /* general header */
-    if ((ret = init_get_bits8(&s->gb, data, size)) < 0) {
+    if ((ret = bitstream_init8(&s->bc, data, size)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to initialize bitstream reader\n");
         return ret;
     }
-    if (get_bits(&s->gb, 2) != 0x2) { // frame marker
+    if (bitstream_read(&s->bc, 2) != 0x2) { // frame marker
         av_log(avctx, AV_LOG_ERROR, "Invalid frame marker\n");
         return AVERROR_INVALIDDATA;
     }
-    s->profile = get_bits1(&s->gb);
-    if (get_bits1(&s->gb)) { // reserved bit
+    s->profile = bitstream_read_bit(&s->bc);
+    if (bitstream_read_bit(&s->bc)) { // reserved bit
         av_log(avctx, AV_LOG_ERROR, "Reserved bit should be zero\n");
         return AVERROR_INVALIDDATA;
     }
-    if (get_bits1(&s->gb)) {
-        *ref = get_bits(&s->gb, 3);
+    if (bitstream_read_bit(&s->bc)) {
+        *ref = bitstream_read(&s->bc, 3);
         return 0;
     }
 
     s->last_keyframe = s->keyframe;
-    s->keyframe      = !get_bits1(&s->gb);
+    s->keyframe      = !bitstream_read_bit(&s->bc);
 
     last_invisible = s->invisible;
-    s->invisible   = !get_bits1(&s->gb);
-    s->errorres    = get_bits1(&s->gb);
+    s->invisible   = !bitstream_read_bit(&s->bc);
+    s->errorres    = bitstream_read_bit(&s->bc);
     // FIXME disable this upon resolution change
     s->use_last_frame_mvs = !s->errorres && !last_invisible;
 
     if (s->keyframe) {
-        if (get_bits_long(&s->gb, 24) != VP9_SYNCCODE) { // synccode
+        if (bitstream_read(&s->bc, 24) != VP9_SYNCCODE) { // synccode
             av_log(avctx, AV_LOG_ERROR, "Invalid sync code\n");
             return AVERROR_INVALIDDATA;
         }
-        s->colorspace = get_bits(&s->gb, 3);
+        s->colorspace = bitstream_read(&s->bc, 3);
         if (s->colorspace == 7) { // RGB = profile 1
             av_log(avctx, AV_LOG_ERROR, "RGB not supported in profile 0\n");
             return AVERROR_INVALIDDATA;
         }
-        s->fullrange = get_bits1(&s->gb);
+        s->fullrange = bitstream_read_bit(&s->bc);
 
         // subsampling bits
         if (s->profile == 1 || s->profile == 3) {
-            s->sub_x = get_bits1(&s->gb);
-            s->sub_y = get_bits1(&s->gb);
+            s->sub_x = bitstream_read_bit(&s->bc);
+            s->sub_y = bitstream_read_bit(&s->bc);
             if (s->sub_x && s->sub_y) {
                 av_log(avctx, AV_LOG_ERROR,
                        "4:2:0 color not supported in profile 1 or 3\n");
                 return AVERROR_INVALIDDATA;
             }
-            if (get_bits1(&s->gb)) { // reserved bit
+            if (bitstream_read_bit(&s->bc)) { // reserved bit
                 av_log(avctx, AV_LOG_ERROR, "Reserved bit should be zero\n");
                 return AVERROR_INVALIDDATA;
             }
@@ -243,31 +242,31 @@ static int decode_frame_header(AVCodecContext *avctx,
         }
 
         s->refreshrefmask = 0xff;
-        w = get_bits(&s->gb, 16) + 1;
-        h = get_bits(&s->gb, 16) + 1;
-        if (get_bits1(&s->gb)) // display size
-            skip_bits(&s->gb, 32);
+        w = bitstream_read(&s->bc, 16) + 1;
+        h = bitstream_read(&s->bc, 16) + 1;
+        if (bitstream_read_bit(&s->bc)) // display size
+            bitstream_skip(&s->bc, 32);
     } else {
-        s->intraonly = s->invisible ? get_bits1(&s->gb) : 0;
-        s->resetctx  = s->errorres ? 0 : get_bits(&s->gb, 2);
+        s->intraonly = s->invisible ? bitstream_read_bit(&s->bc) : 0;
+        s->resetctx  = s->errorres ? 0 : bitstream_read(&s->bc, 2);
         if (s->intraonly) {
-            if (get_bits_long(&s->gb, 24) != VP9_SYNCCODE) { // synccode
+            if (bitstream_read(&s->bc, 24) != VP9_SYNCCODE) { // synccode
                 av_log(avctx, AV_LOG_ERROR, "Invalid sync code\n");
                 return AVERROR_INVALIDDATA;
             }
-            s->refreshrefmask = get_bits(&s->gb, 8);
-            w = get_bits(&s->gb, 16) + 1;
-            h = get_bits(&s->gb, 16) + 1;
-            if (get_bits1(&s->gb)) // display size
-                skip_bits(&s->gb, 32);
+            s->refreshrefmask = bitstream_read(&s->bc, 8);
+            w = bitstream_read(&s->bc, 16) + 1;
+            h = bitstream_read(&s->bc, 16) + 1;
+            if (bitstream_read_bit(&s->bc)) // display size
+                bitstream_skip(&s->bc, 32);
         } else {
-            s->refreshrefmask = get_bits(&s->gb, 8);
-            s->refidx[0]      = get_bits(&s->gb, 3);
-            s->signbias[0]    = get_bits1(&s->gb);
-            s->refidx[1]      = get_bits(&s->gb, 3);
-            s->signbias[1]    = get_bits1(&s->gb);
-            s->refidx[2]      = get_bits(&s->gb, 3);
-            s->signbias[2]    = get_bits1(&s->gb);
+            s->refreshrefmask = bitstream_read(&s->bc, 8);
+            s->refidx[0]      = bitstream_read(&s->bc, 3);
+            s->signbias[0]    = bitstream_read_bit(&s->bc);
+            s->refidx[1]      = bitstream_read(&s->bc, 3);
+            s->signbias[1]    = bitstream_read_bit(&s->bc);
+            s->refidx[2]      = bitstream_read(&s->bc, 3);
+            s->signbias[2]    = bitstream_read_bit(&s->bc);
             if (!s->refs[s->refidx[0]]->buf[0] ||
                 !s->refs[s->refidx[1]]->buf[0] ||
                 !s->refs[s->refidx[2]]->buf[0]) {
@@ -275,24 +274,24 @@ static int decode_frame_header(AVCodecContext *avctx,
                        "Not all references are available\n");
                 return AVERROR_INVALIDDATA;
             }
-            if (get_bits1(&s->gb)) {
+            if (bitstream_read_bit(&s->bc)) {
                 w = s->refs[s->refidx[0]]->width;
                 h = s->refs[s->refidx[0]]->height;
-            } else if (get_bits1(&s->gb)) {
+            } else if (bitstream_read_bit(&s->bc)) {
                 w = s->refs[s->refidx[1]]->width;
                 h = s->refs[s->refidx[1]]->height;
-            } else if (get_bits1(&s->gb)) {
+            } else if (bitstream_read_bit(&s->bc)) {
                 w = s->refs[s->refidx[2]]->width;
                 h = s->refs[s->refidx[2]]->height;
             } else {
-                w = get_bits(&s->gb, 16) + 1;
-                h = get_bits(&s->gb, 16) + 1;
+                w = bitstream_read(&s->bc, 16) + 1;
+                h = bitstream_read(&s->bc, 16) + 1;
             }
-            if (get_bits1(&s->gb)) // display size
-                skip_bits(&s->gb, 32);
-            s->highprecisionmvs = get_bits1(&s->gb);
-            s->filtermode       = get_bits1(&s->gb) ? FILTER_SWITCHABLE :
-                                  get_bits(&s->gb, 2);
+            if (bitstream_read_bit(&s->bc)) // display size
+                bitstream_skip(&s->bc, 32);
+            s->highprecisionmvs = bitstream_read_bit(&s->bc);
+            s->filtermode       = bitstream_read_bit(&s->bc) ? FILTER_SWITCHABLE :
+                                  bitstream_read(&s->bc, 2);
             s->allowcompinter   = s->signbias[0] != s->signbias[1] ||
                                   s->signbias[0] != s->signbias[2];
             if (s->allowcompinter) {
@@ -313,61 +312,61 @@ static int decode_frame_header(AVCodecContext *avctx,
         }
     }
 
-    s->refreshctx   = s->errorres ? 0 : get_bits1(&s->gb);
-    s->parallelmode = s->errorres ? 1 : get_bits1(&s->gb);
-    s->framectxid   = c = get_bits(&s->gb, 2);
+    s->refreshctx   = s->errorres ? 0 : bitstream_read_bit(&s->bc);
+    s->parallelmode = s->errorres ? 1 : bitstream_read_bit(&s->bc);
+    s->framectxid   = c = bitstream_read(&s->bc, 2);
 
     /* loopfilter header data */
-    s->filter.level = get_bits(&s->gb, 6);
-    sharp           = get_bits(&s->gb, 3);
+    s->filter.level = bitstream_read(&s->bc, 6);
+    sharp           = bitstream_read(&s->bc, 3);
     /* If sharpness changed, reinit lim/mblim LUTs. if it didn't change,
      * keep the old cache values since they are still valid. */
     if (s->filter.sharpness != sharp)
         memset(s->filter.lim_lut, 0, sizeof(s->filter.lim_lut));
     s->filter.sharpness = sharp;
-    if ((s->lf_delta.enabled = get_bits1(&s->gb))) {
-        if (get_bits1(&s->gb)) {
+    if ((s->lf_delta.enabled = bitstream_read_bit(&s->bc))) {
+        if (bitstream_read_bit(&s->bc)) {
             for (i = 0; i < 4; i++)
-                if (get_bits1(&s->gb))
-                    s->lf_delta.ref[i] = get_bits_with_sign(&s->gb, 6);
+                if (bitstream_read_bit(&s->bc))
+                    s->lf_delta.ref[i] = get_bits_with_sign(&s->bc, 6);
             for (i = 0; i < 2; i++)
-                if (get_bits1(&s->gb))
-                    s->lf_delta.mode[i] = get_bits_with_sign(&s->gb, 6);
+                if (bitstream_read_bit(&s->bc))
+                    s->lf_delta.mode[i] = get_bits_with_sign(&s->bc, 6);
         }
     } else {
         memset(&s->lf_delta, 0, sizeof(s->lf_delta));
     }
 
     /* quantization header data */
-    s->yac_qi      = get_bits(&s->gb, 8);
-    s->ydc_qdelta  = get_bits1(&s->gb) ? get_bits_with_sign(&s->gb, 4) : 0;
-    s->uvdc_qdelta = get_bits1(&s->gb) ? get_bits_with_sign(&s->gb, 4) : 0;
-    s->uvac_qdelta = get_bits1(&s->gb) ? get_bits_with_sign(&s->gb, 4) : 0;
+    s->yac_qi      = bitstream_read(&s->bc, 8);
+    s->ydc_qdelta  = bitstream_read_bit(&s->bc) ? get_bits_with_sign(&s->bc, 4) : 0;
+    s->uvdc_qdelta = bitstream_read_bit(&s->bc) ? get_bits_with_sign(&s->bc, 4) : 0;
+    s->uvac_qdelta = bitstream_read_bit(&s->bc) ? get_bits_with_sign(&s->bc, 4) : 0;
     s->lossless    = s->yac_qi == 0 && s->ydc_qdelta == 0 &&
                      s->uvdc_qdelta == 0 && s->uvac_qdelta == 0;
 
     /* segmentation header info */
-    if ((s->segmentation.enabled = get_bits1(&s->gb))) {
-        if ((s->segmentation.update_map = get_bits1(&s->gb))) {
+    if ((s->segmentation.enabled = bitstream_read_bit(&s->bc))) {
+        if ((s->segmentation.update_map = bitstream_read_bit(&s->bc))) {
             for (i = 0; i < 7; i++)
-                s->prob.seg[i] = get_bits1(&s->gb) ?
-                                 get_bits(&s->gb, 8) : 255;
-            if ((s->segmentation.temporal = get_bits1(&s->gb)))
+                s->prob.seg[i] = bitstream_read_bit(&s->bc) ?
+                                 bitstream_read(&s->bc, 8) : 255;
+            if ((s->segmentation.temporal = bitstream_read_bit(&s->bc)))
                 for (i = 0; i < 3; i++)
-                    s->prob.segpred[i] = get_bits1(&s->gb) ?
-                                         get_bits(&s->gb, 8) : 255;
+                    s->prob.segpred[i] = bitstream_read_bit(&s->bc) ?
+                                         bitstream_read(&s->bc, 8) : 255;
         }
 
-        if (get_bits1(&s->gb)) {
-            s->segmentation.absolute_vals = get_bits1(&s->gb);
+        if (bitstream_read_bit(&s->bc)) {
+            s->segmentation.absolute_vals = bitstream_read_bit(&s->bc);
             for (i = 0; i < 8; i++) {
-                if ((s->segmentation.feat[i].q_enabled = get_bits1(&s->gb)))
-                    s->segmentation.feat[i].q_val = get_bits_with_sign(&s->gb, 8);
-                if ((s->segmentation.feat[i].lf_enabled = get_bits1(&s->gb)))
-                    s->segmentation.feat[i].lf_val = get_bits_with_sign(&s->gb, 6);
-                if ((s->segmentation.feat[i].ref_enabled = get_bits1(&s->gb)))
-                    s->segmentation.feat[i].ref_val = get_bits(&s->gb, 2);
-                s->segmentation.feat[i].skip_enabled = get_bits1(&s->gb);
+                if ((s->segmentation.feat[i].q_enabled = bitstream_read_bit(&s->bc)))
+                    s->segmentation.feat[i].q_val = get_bits_with_sign(&s->bc, 8);
+                if ((s->segmentation.feat[i].lf_enabled = bitstream_read_bit(&s->bc)))
+                    s->segmentation.feat[i].lf_val = get_bits_with_sign(&s->bc, 6);
+                if ((s->segmentation.feat[i].ref_enabled = bitstream_read_bit(&s->bc)))
+                    s->segmentation.feat[i].ref_val = bitstream_read(&s->bc, 2);
+                s->segmentation.feat[i].skip_enabled = bitstream_read_bit(&s->bc);
             }
         }
     } else {
@@ -433,12 +432,12 @@ static int decode_frame_header(AVCodecContext *avctx,
     for (max = 0; (s->sb_cols >> max) >= 4; max++) ;
     max = FFMAX(0, max - 1);
     while (max > s->tiling.log2_tile_cols) {
-        if (get_bits1(&s->gb))
+        if (bitstream_read_bit(&s->bc))
             s->tiling.log2_tile_cols++;
         else
             break;
     }
-    s->tiling.log2_tile_rows = decode012(&s->gb);
+    s->tiling.log2_tile_rows = bitstream_decode012(&s->bc);
     s->tiling.tile_rows      = 1 << s->tiling.log2_tile_rows;
     if (s->tiling.tile_cols != (1 << s->tiling.log2_tile_cols)) {
         s->tiling.tile_cols = 1 << s->tiling.log2_tile_cols;
@@ -468,8 +467,8 @@ static int decode_frame_header(AVCodecContext *avctx,
     }
 
     // next 16 bits is size of the rest of the header (arith-coded)
-    size2 = get_bits(&s->gb, 16);
-    data2 = align_get_bits(&s->gb);
+    size2 = bitstream_read(&s->bc, 16);
+    data2 = bitstream_align(&s->bc);
     if (size2 > size - (data2 - data)) {
         av_log(avctx, AV_LOG_ERROR, "Invalid compressed header size\n");
         return AVERROR_INVALIDDATA;
