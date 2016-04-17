@@ -22,7 +22,7 @@
 #include "libavutil/mathematics.h"
 #include "libavutil/avstring.h"
 #include "libavutil/time.h"
-#include "libavcodec/get_bits.h"
+#include "libavcodec/bitstream.h"
 #include "avformat.h"
 #include "network.h"
 #include "srtp.h"
