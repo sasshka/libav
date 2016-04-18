@@ -30,7 +30,7 @@
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "acelp_vectors.h"
 #include "celp_filters.h"
 #include "g723_1.h"
@@ -67,14 +67,14 @@ static av_cold int g723_1_decode_init(AVCodecContext *avctx)
 static int unpack_bitstream(G723_1_Context *p, const uint8_t *buf,
                             int buf_size)
 {
-    GetBitContext gb;
+    BitstreamContext bc;
     int ad_cb_len;
     int temp, info_bits, i;
 
-    init_get_bits(&gb, buf, buf_size * 8);
+    bitstream_init(&bc, buf, buf_size * 8);
 
     /* Extract frame type and rate info */
-    info_bits = get_bits(&gb, 2);
+    info_bits = bitstream_read(&bc, 2);
 
     if (info_bits == 3) {
         p->cur_frame_type = UNTRANSMITTED_FRAME;
@@ -82,13 +82,13 @@ static int unpack_bitstream(G723_1_Context *p, const uint8_t *buf,
     }
 
     /* Extract 24 bit lsp indices, 8 bit for each band */
-    p->lsp_index[2] = get_bits(&gb, 8);
-    p->lsp_index[1] = get_bits(&gb, 8);
-    p->lsp_index[0] = get_bits(&gb, 8);
+    p->lsp_index[2] = bitstream_read(&bc, 8);
+    p->lsp_index[1] = bitstream_read(&bc, 8);
+    p->lsp_index[0] = bitstream_read(&bc, 8);
 
     if (info_bits == 2) {
         p->cur_frame_type = SID_FRAME;
-        p->subframe[0].amp_index = get_bits(&gb, 6);
+        p->subframe[0].amp_index = bitstream_read(&bc, 6);
         return 0;
     }
 
@@ -96,23 +96,23 @@ static int unpack_bitstream(G723_1_Context *p, const uint8_t *buf,
     p->cur_rate       = info_bits ? RATE_5300 : RATE_6300;
     p->cur_frame_type = ACTIVE_FRAME;
 
-    p->pitch_lag[0] = get_bits(&gb, 7);
+    p->pitch_lag[0] = bitstream_read(&bc, 7);
     if (p->pitch_lag[0] > 123)       /* test if forbidden code */
         return -1;
     p->pitch_lag[0] += PITCH_MIN;
-    p->subframe[1].ad_cb_lag = get_bits(&gb, 2);
+    p->subframe[1].ad_cb_lag = bitstream_read(&bc, 2);
 
-    p->pitch_lag[1] = get_bits(&gb, 7);
+    p->pitch_lag[1] = bitstream_read(&bc, 7);
     if (p->pitch_lag[1] > 123)
         return -1;
     p->pitch_lag[1] += PITCH_MIN;
-    p->subframe[3].ad_cb_lag = get_bits(&gb, 2);
+    p->subframe[3].ad_cb_lag = bitstream_read(&bc, 2);
     p->subframe[0].ad_cb_lag = 1;
     p->subframe[2].ad_cb_lag = 1;
 
     for (i = 0; i < SUBFRAMES; i++) {
         /* Extract combined gain */
-        temp = get_bits(&gb, 12);
+        temp = bitstream_read(&bc, 12);
         ad_cb_len = 170;
         p->subframe[i].dirac_train = 0;
         if (p->cur_rate == RATE_6300 && p->pitch_lag[i >> 1] < SUBFRAME_LEN - 2) {
@@ -129,16 +129,16 @@ static int unpack_bitstream(G723_1_Context *p, const uint8_t *buf,
         }
     }
 
-    p->subframe[0].grid_index = get_bits(&gb, 1);
-    p->subframe[1].grid_index = get_bits(&gb, 1);
-    p->subframe[2].grid_index = get_bits(&gb, 1);
-    p->subframe[3].grid_index = get_bits(&gb, 1);
+    p->subframe[0].grid_index = bitstream_read(&bc, 1);
+    p->subframe[1].grid_index = bitstream_read(&bc, 1);
+    p->subframe[2].grid_index = bitstream_read(&bc, 1);
+    p->subframe[3].grid_index = bitstream_read(&bc, 1);
 
     if (p->cur_rate == RATE_6300) {
-        skip_bits(&gb, 1);  /* skip reserved bit */
+        bitstream_skip(&bc, 1);  /* skip reserved bit */
 
         /* Compute pulse_pos index using the 13-bit combined position index */
-        temp = get_bits(&gb, 13);
+        temp = bitstream_read(&bc, 13);
         p->subframe[0].pulse_pos = temp / 810;
 
         temp -= p->subframe[0].pulse_pos * 810;
@@ -149,28 +149,28 @@ static int unpack_bitstream(G723_1_Context *p, const uint8_t *buf,
         p->subframe[3].pulse_pos = temp - p->subframe[2].pulse_pos * 9;
 
         p->subframe[0].pulse_pos = (p->subframe[0].pulse_pos << 16) +
-                                   get_bits(&gb, 16);
+                                   bitstream_read(&bc, 16);
         p->subframe[1].pulse_pos = (p->subframe[1].pulse_pos << 14) +
-                                   get_bits(&gb, 14);
+                                   bitstream_read(&bc, 14);
         p->subframe[2].pulse_pos = (p->subframe[2].pulse_pos << 16) +
-                                   get_bits(&gb, 16);
+                                   bitstream_read(&bc, 16);
         p->subframe[3].pulse_pos = (p->subframe[3].pulse_pos << 14) +
-                                   get_bits(&gb, 14);
+                                   bitstream_read(&bc, 14);
 
-        p->subframe[0].pulse_sign = get_bits(&gb, 6);
-        p->subframe[1].pulse_sign = get_bits(&gb, 5);
-        p->subframe[2].pulse_sign = get_bits(&gb, 6);
-        p->subframe[3].pulse_sign = get_bits(&gb, 5);
+        p->subframe[0].pulse_sign = bitstream_read(&bc, 6);
+        p->subframe[1].pulse_sign = bitstream_read(&bc, 5);
+        p->subframe[2].pulse_sign = bitstream_read(&bc, 6);
+        p->subframe[3].pulse_sign = bitstream_read(&bc, 5);
     } else { /* 5300 bps */
-        p->subframe[0].pulse_pos  = get_bits(&gb, 12);
-        p->subframe[1].pulse_pos  = get_bits(&gb, 12);
-        p->subframe[2].pulse_pos  = get_bits(&gb, 12);
-        p->subframe[3].pulse_pos  = get_bits(&gb, 12);
+        p->subframe[0].pulse_pos  = bitstream_read(&bc, 12);
+        p->subframe[1].pulse_pos  = bitstream_read(&bc, 12);
+        p->subframe[2].pulse_pos  = bitstream_read(&bc, 12);
+        p->subframe[3].pulse_pos  = bitstream_read(&bc, 12);
 
-        p->subframe[0].pulse_sign = get_bits(&gb, 4);
-        p->subframe[1].pulse_sign = get_bits(&gb, 4);
-        p->subframe[2].pulse_sign = get_bits(&gb, 4);
-        p->subframe[3].pulse_sign = get_bits(&gb, 4);
+        p->subframe[0].pulse_sign = bitstream_read(&bc, 4);
+        p->subframe[1].pulse_sign = bitstream_read(&bc, 4);
+        p->subframe[2].pulse_sign = bitstream_read(&bc, 4);
+        p->subframe[3].pulse_sign = bitstream_read(&bc, 4);
     }
 
     return 0;
