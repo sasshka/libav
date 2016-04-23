@@ -28,7 +28,7 @@
 
 #include "avcodec.h"
 #include "blockdsp.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "internal.h"
 #include "mpeg_er.h"
 #include "mpegvideo.h"
@@ -59,52 +59,52 @@ typedef struct SpriteData {
     int effect_params1[15], effect_params2[10]; ///< effect parameters in 16.16 fixed point format
 } SpriteData;
 
-static inline int get_fp_val(GetBitContext* gb)
+static inline int get_fp_val(BitstreamContext* bc)
 {
-    return (get_bits_long(gb, 30) - (1 << 29)) << 1;
+    return (bitstream_read(bc, 30) - (1 << 29)) << 1;
 }
 
-static void vc1_sprite_parse_transform(GetBitContext* gb, int c[7])
+static void vc1_sprite_parse_transform(BitstreamContext* bc, int c[7])
 {
     c[1] = c[3] = 0;
 
-    switch (get_bits(gb, 2)) {
+    switch (bitstream_read(bc, 2)) {
     case 0:
         c[0] = 1 << 16;
-        c[2] = get_fp_val(gb);
+        c[2] = get_fp_val(bc);
         c[4] = 1 << 16;
         break;
     case 1:
-        c[0] = c[4] = get_fp_val(gb);
-        c[2] = get_fp_val(gb);
+        c[0] = c[4] = get_fp_val(bc);
+        c[2] = get_fp_val(bc);
         break;
     case 2:
-        c[0] = get_fp_val(gb);
-        c[2] = get_fp_val(gb);
-        c[4] = get_fp_val(gb);
+        c[0] = get_fp_val(bc);
+        c[2] = get_fp_val(bc);
+        c[4] = get_fp_val(bc);
         break;
     case 3:
-        c[0] = get_fp_val(gb);
-        c[1] = get_fp_val(gb);
-        c[2] = get_fp_val(gb);
-        c[3] = get_fp_val(gb);
-        c[4] = get_fp_val(gb);
+        c[0] = get_fp_val(bc);
+        c[1] = get_fp_val(bc);
+        c[2] = get_fp_val(bc);
+        c[3] = get_fp_val(bc);
+        c[4] = get_fp_val(bc);
         break;
     }
-    c[5] = get_fp_val(gb);
-    if (get_bits1(gb))
-        c[6] = get_fp_val(gb);
+    c[5] = get_fp_val(bc);
+    if (bitstream_read_bit(bc))
+        c[6] = get_fp_val(bc);
     else
         c[6] = 1 << 16;
 }
 
-static void vc1_parse_sprites(VC1Context *v, GetBitContext* gb, SpriteData* sd)
+static void vc1_parse_sprites(VC1Context *v, BitstreamContext* bc, SpriteData* sd)
 {
     AVCodecContext *avctx = v->s.avctx;
     int sprite, i;
 
     for (sprite = 0; sprite <= v->two_sprites; sprite++) {
-        vc1_sprite_parse_transform(gb, sd->coefs[sprite]);
+        vc1_sprite_parse_transform(bc, sd->coefs[sprite]);
         if (sd->coefs[sprite][1] || sd->coefs[sprite][3])
             avpriv_request_sample(avctx, "Non-zero rotation coefficients");
         av_log(avctx, AV_LOG_DEBUG, sprite ? "S2:" : "S1:");
@@ -115,19 +115,19 @@ static void vc1_parse_sprites(VC1Context *v, GetBitContext* gb, SpriteData* sd)
         av_log(avctx, AV_LOG_DEBUG, "\n");
     }
 
-    skip_bits(gb, 2);
-    if (sd->effect_type = get_bits_long(gb, 30)) {
-        switch (sd->effect_pcount1 = get_bits(gb, 4)) {
+    bitstream_skip(bc, 2);
+    if (sd->effect_type = bitstream_read(bc, 30)) {
+        switch (sd->effect_pcount1 = bitstream_read(bc, 4)) {
         case 7:
-            vc1_sprite_parse_transform(gb, sd->effect_params1);
+            vc1_sprite_parse_transform(bc, sd->effect_params1);
             break;
         case 14:
-            vc1_sprite_parse_transform(gb, sd->effect_params1);
-            vc1_sprite_parse_transform(gb, sd->effect_params1 + 7);
+            vc1_sprite_parse_transform(bc, sd->effect_params1);
+            vc1_sprite_parse_transform(bc, sd->effect_params1 + 7);
             break;
         default:
             for (i = 0; i < sd->effect_pcount1; i++)
-                sd->effect_params1[i] = get_fp_val(gb);
+                sd->effect_params1[i] = get_fp_val(bc);
         }
         if (sd->effect_type != 13 || sd->effect_params1[0] != sd->coefs[0][6]) {
             // effect 13 is simple alpha blending and matches the opacity above
@@ -139,7 +139,7 @@ static void vc1_parse_sprites(VC1Context *v, GetBitContext* gb, SpriteData* sd)
             av_log(avctx, AV_LOG_DEBUG, "\n");
         }
 
-        sd->effect_pcount2 = get_bits(gb, 16);
+        sd->effect_pcount2 = bitstream_read(bc, 16);
         if (sd->effect_pcount2 > 10) {
             av_log(avctx, AV_LOG_ERROR, "Too many effect parameters\n");
             return;
@@ -147,7 +147,7 @@ static void vc1_parse_sprites(VC1Context *v, GetBitContext* gb, SpriteData* sd)
             i = -1;
             av_log(avctx, AV_LOG_DEBUG, "Effect params 2: ");
             while (++i < sd->effect_pcount2) {
-                sd->effect_params2[i] = get_fp_val(gb);
+                sd->effect_params2[i] = get_fp_val(bc);
                 av_log(avctx, AV_LOG_DEBUG, " %d.%.2d",
                        sd->effect_params2[i] / (1 << 16),
                        (abs(sd->effect_params2[i]) & 0xFFFF) * 1000 / (1 << 16));
@@ -155,13 +155,12 @@ static void vc1_parse_sprites(VC1Context *v, GetBitContext* gb, SpriteData* sd)
             av_log(avctx, AV_LOG_DEBUG, "\n");
         }
     }
-    if (sd->effect_flag = get_bits1(gb))
+    if (sd->effect_flag = bitstream_read_bit(bc))
         av_log(avctx, AV_LOG_DEBUG, "Effect flag set\n");
 
-    if (get_bits_count(gb) >= gb->size_in_bits +
-       (avctx->codec_id == AV_CODEC_ID_WMV3IMAGE ? 64 : 0))
+    if (bitstream_tell(bc) <= (avctx->codec_id == AV_CODEC_ID_WMV3IMAGE ? 64 : 0))
         av_log(avctx, AV_LOG_ERROR, "Buffer overrun\n");
-    if (get_bits_count(gb) < gb->size_in_bits - 8)
+    if (bitstream_bits_left(bc) > 8)
         av_log(avctx, AV_LOG_WARNING, "Buffer not fully read\n");
 }
 
@@ -262,13 +261,13 @@ static void vc1_draw_sprites(VC1Context *v, SpriteData* sd)
 }
 
 
-static int vc1_decode_sprites(VC1Context *v, GetBitContext* gb)
+static int vc1_decode_sprites(VC1Context *v, BitstreamContext* bc)
 {
     MpegEncContext *s     = &v->s;
     AVCodecContext *avctx = s->avctx;
     SpriteData sd;
 
-    vc1_parse_sprites(v, gb, &sd);
+    vc1_parse_sprites(v, bc, &sd);
 
     if (!s->current_picture.f->data[0]) {
         av_log(avctx, AV_LOG_ERROR, "Got no sprites\n");
@@ -415,7 +414,7 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
 {
     VC1Context *v = avctx->priv_data;
     MpegEncContext *s = &v->s;
-    GetBitContext gb;
+    BitstreamContext bc;
 
     /* save the container output size for WMImage */
     v->output_width  = avctx->width;
@@ -443,15 +442,15 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
         // the last byte of the extradata is a version number, 1 for the
         // samples we can decode
 
-        init_get_bits(&gb, avctx->extradata, avctx->extradata_size*8);
+        bitstream_init8(&bc, avctx->extradata, avctx->extradata_size);
 
-        if (ff_vc1_decode_sequence_header(avctx, v, &gb) < 0)
+        if (ff_vc1_decode_sequence_header(avctx, v, &bc) < 0)
           return -1;
 
-        count = avctx->extradata_size*8 - get_bits_count(&gb);
+        count = avctx->extradata_size*8 - bitstream_tell(&bc);
         if (count > 0) {
             av_log(avctx, AV_LOG_INFO, "Extra data: %i bits left, value: %X\n",
-                   count, get_bits_long(&gb, FFMIN(count, 32)));
+                   count, bitstream_read(&bc, FFMIN(count, 32)));
         } else if (count < 0) {
             av_log(avctx, AV_LOG_INFO, "Read %i bits in overflow\n", -count);
         }
@@ -477,17 +476,17 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
             if (size <= 0)
                 continue;
             buf2_size = vc1_unescape_buffer(start + 4, size, buf2);
-            init_get_bits(&gb, buf2, buf2_size * 8);
+            bitstream_init8(&bc, buf2, buf2_size);
             switch (AV_RB32(start)) {
             case VC1_CODE_SEQHDR:
-                if (ff_vc1_decode_sequence_header(avctx, v, &gb) < 0) {
+                if (ff_vc1_decode_sequence_header(avctx, v, &bc) < 0) {
                     av_free(buf2);
                     return -1;
                 }
                 seq_initialized = 1;
                 break;
             case VC1_CODE_ENTRYPOINT:
-                if (ff_vc1_decode_entry_point(avctx, v, &gb) < 0) {
+                if (ff_vc1_decode_entry_point(avctx, v, &bc) < 0) {
                     av_free(buf2);
                     return -1;
                 }
@@ -598,7 +597,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
     int mb_height, n_slices1;
     struct {
         uint8_t *buf;
-        GetBitContext gb;
+        BitstreamContext bc;
         int mby_start;
     } *slices = NULL, *tmp;
 
@@ -647,7 +646,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                         goto err;
                     buf_size3 = vc1_unescape_buffer(start + 4, size,
                                                     slices[n_slices].buf);
-                    init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
+                    bitstream_init(&slices[n_slices].bc, slices[n_slices].buf,
                                   buf_size3 << 3);
                     /* assuming that the field marker is at the exact middle,
                        hope it's correct */
@@ -658,8 +657,8 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                 }
                 case VC1_CODE_ENTRYPOINT: /* it should be before frame data */
                     buf_size2 = vc1_unescape_buffer(start + 4, size, buf2);
-                    init_get_bits(&s->gb, buf2, buf_size2 * 8);
-                    ff_vc1_decode_entry_point(avctx, v, &s->gb);
+                    bitstream_init8(&s->bc, buf2, buf_size2);
+                    ff_vc1_decode_entry_point(avctx, v, &s->bc);
                     break;
                 case VC1_CODE_SLICE: {
                     int buf_size3;
@@ -672,9 +671,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                         goto err;
                     buf_size3 = vc1_unescape_buffer(start + 4, size,
                                                     slices[n_slices].buf);
-                    init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
+                    bitstream_init(&slices[n_slices].bc, slices[n_slices].buf,
                                   buf_size3 << 3);
-                    slices[n_slices].mby_start = get_bits(&slices[n_slices].gb, 9);
+                    slices[n_slices].mby_start = bitstream_read(&slices[n_slices].bc, 9);
                     n_slices++;
                     break;
                 }
@@ -697,7 +696,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                 if (!slices[n_slices].buf)
                     goto err;
                 buf_size3 = vc1_unescape_buffer(divider + 4, buf + buf_size - divider - 4, slices[n_slices].buf);
-                init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
+                bitstream_init(&slices[n_slices].bc, slices[n_slices].buf,
                               buf_size3 << 3);
                 slices[n_slices].mby_start = s->mb_height >> 1;
                 n_slices1 = n_slices - 1;
@@ -707,13 +706,13 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
         } else {
             buf_size2 = vc1_unescape_buffer(buf, buf_size, buf2);
         }
-        init_get_bits(&s->gb, buf2, buf_size2*8);
+        bitstream_init8(&s->bc, buf2, buf_size2);
     } else
-        init_get_bits(&s->gb, buf, buf_size*8);
+        bitstream_init8(&s->bc, buf, buf_size);
 
     if (v->res_sprite) {
-        v->new_sprite  = !get_bits1(&s->gb);
-        v->two_sprites =  get_bits1(&s->gb);
+        v->new_sprite  = !bitstream_read_bit(&s->bc);
+        v->two_sprites =  bitstream_read_bit(&s->bc);
         /* res_sprite means a Windows Media Image stream, AV_CODEC_ID_*IMAGE means
            we're using the sprite compositor. These are intentionally kept separate
            so you can get the raw sprites by using the wmv3 decoder for WMVP or
@@ -755,11 +754,11 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
     v->pic_header_flag = 0;
     v->first_pic_header_flag = 1;
     if (v->profile < PROFILE_ADVANCED) {
-        if (ff_vc1_parse_frame_header(v, &s->gb) < 0) {
+        if (ff_vc1_parse_frame_header(v, &s->bc) < 0) {
             goto err;
         }
     } else {
-        if (ff_vc1_parse_frame_header_adv(v, &s->gb) < 0) {
+        if (ff_vc1_parse_frame_header_adv(v, &s->bc) < 0) {
             goto err;
         }
     }
@@ -858,15 +857,15 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
             if (i) {
                 v->pic_header_flag = 0;
                 if (v->field_mode && i == n_slices1 + 2) {
-                    if ((header_ret = ff_vc1_parse_frame_header_adv(v, &s->gb)) < 0) {
+                    if ((header_ret = ff_vc1_parse_frame_header_adv(v, &s->bc)) < 0) {
                         av_log(v->s.avctx, AV_LOG_ERROR, "Field header damaged\n");
                         if (avctx->err_recognition & AV_EF_EXPLODE)
                             goto err;
                         continue;
                     }
-                } else if (get_bits1(&s->gb)) {
+                } else if (bitstream_read_bit(&s->bc)) {
                     v->pic_header_flag = 1;
-                    if ((header_ret = ff_vc1_parse_frame_header_adv(v, &s->gb)) < 0) {
+                    if ((header_ret = ff_vc1_parse_frame_header_adv(v, &s->bc)) < 0) {
                         av_log(v->s.avctx, AV_LOG_ERROR, "Slice header damaged\n");
                         if (avctx->err_recognition & AV_EF_EXPLODE)
                             goto err;
@@ -883,7 +882,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                 s->end_mb_y = (i <= n_slices1 + 1) ? mb_height : FFMIN(mb_height, slices[i].mby_start % mb_height);
             ff_vc1_decode_blocks(v);
             if (i != n_slices)
-                s->gb = slices[i].gb;
+                s->bc = slices[i].bc;
         }
         if (v->field_mode) {
             v->second_field = 0;
@@ -898,8 +897,8 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
             }
         }
         ff_dlog(s->avctx, "Consumed %i/%i bits\n",
-                get_bits_count(&s->gb), s->gb.size_in_bits);
-//  if (get_bits_count(&s->gb) > buf_size * 8)
+                bitstream_tell(&s->bc), s->bc.size_in_bits);
+//  if (bitstream_tell(&s->bc) > buf_size * 8)
 //      return -1;
         if (!v->field_mode)
             ff_er_frame_end(&s->er);
@@ -914,7 +913,7 @@ image:
         if (avctx->skip_frame >= AVDISCARD_NONREF)
             goto end;
 #if CONFIG_WMV3IMAGE_DECODER || CONFIG_VC1IMAGE_DECODER
-        if (vc1_decode_sprites(v, &s->gb))
+        if (vc1_decode_sprites(v, &s->bc))
             goto err;
 #endif
         if ((ret = av_frame_ref(pict, v->sprite_output_frame)) < 0)

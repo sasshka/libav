@@ -24,11 +24,13 @@
 #define AVCODEC_VC1_H
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "h264chroma.h"
 #include "mpegvideo.h"
 #include "intrax8.h"
 #include "vc1_common.h"
 #include "vc1dsp.h"
+#include "vlc.h"
 
 #define AC_VLC_BITS 9
 
@@ -384,15 +386,15 @@ typedef struct VC1Context{
  * Decode Simple/Main Profiles sequence header
  * @see Figure 7-8, p16-17
  * @param avctx Codec context
- * @param gb GetBit context initialized from Codec context extra_data
+ * @param bc Bitstream context initialized from Codec context extra_data
  * @return Status
  */
-int ff_vc1_decode_sequence_header(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
+int ff_vc1_decode_sequence_header(AVCodecContext *avctx, VC1Context *v, BitstreamContext *bc);
 
-int ff_vc1_decode_entry_point(AVCodecContext *avctx, VC1Context *v, GetBitContext *gb);
+int ff_vc1_decode_entry_point(AVCodecContext *avctx, VC1Context *v, BitstreamContext *bc);
 
-int ff_vc1_parse_frame_header    (VC1Context *v, GetBitContext *gb);
-int ff_vc1_parse_frame_header_adv(VC1Context *v, GetBitContext *gb);
+int ff_vc1_parse_frame_header    (VC1Context *v, BitstreamContext *bc);
+int ff_vc1_parse_frame_header_adv(VC1Context *v, BitstreamContext *bc);
 int ff_vc1_init_common(VC1Context *v);
 
 int  ff_vc1_decode_init_alloc_tables(VC1Context *v);

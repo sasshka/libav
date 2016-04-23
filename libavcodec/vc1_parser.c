@@ -26,9 +26,10 @@
  */
 
 #include "libavutil/attributes.h"
+
+#include "bitstream.h"
 #include "parser.h"
 #include "vc1.h"
-#include "get_bits.h"
 
 /** The maximum number of bytes of a sequence, entry point or
  *  frame header whose values we pay any attention to */
@@ -62,22 +63,22 @@ static void vc1_extract_header(AVCodecParserContext *s, AVCodecContext *avctx,
 {
     /* Parse the header we just finished unescaping */
     VC1ParseContext *vpc = s->priv_data;
-    GetBitContext gb;
+    BitstreamContext bc;
     vpc->v.s.avctx = avctx;
     vpc->v.parse_only = 1;
-    init_get_bits(&gb, buf, buf_size * 8);
+    bitstream_init8(&bc, buf, buf_size);
     switch (vpc->prev_start_code) {
     case VC1_CODE_SEQHDR & 0xFF:
-        ff_vc1_decode_sequence_header(avctx, &vpc->v, &gb);
+        ff_vc1_decode_sequence_header(avctx, &vpc->v, &bc);
         break;
     case VC1_CODE_ENTRYPOINT & 0xFF:
-        ff_vc1_decode_entry_point(avctx, &vpc->v, &gb);
+        ff_vc1_decode_entry_point(avctx, &vpc->v, &bc);
         break;
     case VC1_CODE_FRAME & 0xFF:
         if(vpc->v.profile < PROFILE_ADVANCED)
-            ff_vc1_parse_frame_header    (&vpc->v, &gb);
+            ff_vc1_parse_frame_header    (&vpc->v, &bc);
         else
-            ff_vc1_parse_frame_header_adv(&vpc->v, &gb);
+            ff_vc1_parse_frame_header_adv(&vpc->v, &bc);
 
         /* keep AV_PICTURE_TYPE_BI internal to VC1 */
         if (vpc->v.s.pict_type == AV_PICTURE_TYPE_BI)

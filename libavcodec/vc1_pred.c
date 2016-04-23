@@ -26,6 +26,7 @@
  * VC-1 and WMV3 block decoding routines
  */
 
+#include "bitstream.h"
 #include "mathops.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
@@ -416,7 +417,7 @@ void ff_vc1_pred_mv(VC1Context *v, int n, int dmv_x, int dmv_y,
             else
                 sum = FFABS(px - field_predA[0]) + FFABS(py - field_predA[1]);
             if (sum > hybridmv_thresh) {
-                if (get_bits1(&s->gb)) {     // read HYBRIDPRED bit
+                if (bitstream_read_bit(&s->bc)) {     // read HYBRIDPRED bit
                     px = field_predA[0];
                     py = field_predA[1];
                 } else {
@@ -429,7 +430,7 @@ void ff_vc1_pred_mv(VC1Context *v, int n, int dmv_x, int dmv_y,
                 else
                     sum = FFABS(px - field_predC[0]) + FFABS(py - field_predC[1]);
                 if (sum > hybridmv_thresh) {
-                    if (get_bits1(&s->gb)) {
+                    if (bitstream_read_bit(&s->bc)) {
                         px = field_predA[0];
                         py = field_predA[1];
                     } else {
@@ -781,7 +782,7 @@ void ff_vc1_pred_b_mv(VC1Context *v, int dmv_x[2], int dmv_y[2],
             else
                 sum = FFABS(px - A[0]) + FFABS(py - A[1]);
             if (sum > 32) {
-                if (get_bits1(&s->gb)) {
+                if (bitstream_read_bit(&s->bc)) {
                     px = A[0];
                     py = A[1];
                 } else {
@@ -794,7 +795,7 @@ void ff_vc1_pred_b_mv(VC1Context *v, int dmv_x[2], int dmv_y[2],
                 else
                     sum = FFABS(px - C[0]) + FFABS(py - C[1]);
                 if (sum > 32) {
-                    if (get_bits1(&s->gb)) {
+                    if (bitstream_read_bit(&s->bc)) {
                         px = A[0];
                         py = A[1];
                     } else {
@@ -860,7 +861,7 @@ void ff_vc1_pred_b_mv(VC1Context *v, int dmv_x[2], int dmv_y[2],
             else
                 sum = FFABS(px - A[0]) + FFABS(py - A[1]);
             if (sum > 32) {
-                if (get_bits1(&s->gb)) {
+                if (bitstream_read_bit(&s->bc)) {
                     px = A[0];
                     py = A[1];
                 } else {
@@ -873,7 +874,7 @@ void ff_vc1_pred_b_mv(VC1Context *v, int dmv_x[2], int dmv_y[2],
                 else
                     sum = FFABS(px - C[0]) + FFABS(py - C[1]);
                 if (sum > 32) {
-                    if (get_bits1(&s->gb)) {
+                    if (bitstream_read_bit(&s->bc)) {
                         px = A[0];
                         py = A[1];
                     } else {

@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "mpegutils.h"
 #include "vc1.h"
 #include "vc1data.h"
@@ -154,7 +155,7 @@ static void fill_slice(AVCodecContext *avctx, DXVA_SliceInfo *slice,
     slice->dwSliceDataLocation = position;
     slice->bStartCodeBitOffset = 0;
     slice->bReservedBits       = 0;
-    slice->wMBbitOffset        = get_bits_count(&s->gb);
+    slice->wMBbitOffset        = bitstream_tell(&s->bc);
     slice->wNumberMBsInSlice   = s->mb_width * s->mb_height; /* XXX We assume 1 slice */
     slice->wQuantizerScaleCode = v->pq;
     slice->wBadSliceChopping   = 0;

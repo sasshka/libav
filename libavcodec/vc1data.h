@@ -30,7 +30,9 @@
 
 #include <stdint.h>
 #include "libavutil/rational.h"
-#include "get_bits.h"
+
+#include "bitstream.h"
+#include "vlc.h"
 
 /** Table for conversion between TTBLK and TTMB */
 extern const int ff_vc1_ttblk_to_tt[3][8];

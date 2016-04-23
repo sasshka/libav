@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "vaapi_internal.h"
 #include "internal.h"
 #include "vc1.h"
@@ -325,7 +326,7 @@ static int vaapi_vc1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, 
     slice_param = (VASliceParameterBufferVC1 *)ff_vaapi_alloc_slice(avctx->hwaccel_context, buffer, size);
     if (!slice_param)
         return -1;
-    slice_param->macroblock_offset       = get_bits_count(&s->gb);
+    slice_param->macroblock_offset       = bitstream_tell(&s->bc);
     slice_param->slice_vertical_position = s->mb_y;
     return 0;
 }
