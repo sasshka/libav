@@ -25,7 +25,7 @@
 
 #include <stdint.h>
 
-#include "get_bits.h"
+#include "bitstream.h"
 #include "mpegvideo.h"
 #include "rl.h"
 
@@ -137,7 +137,7 @@ void ff_mpeg4_pred_ac(MpegEncContext *s, int16_t *block, int n,
 void ff_set_mpeg4_time(MpegEncContext *s);
 void ff_mpeg4_encode_picture_header(MpegEncContext *s, int picture_number);
 
-int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb);
+int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, BitstreamContext *bc);
 void ff_mpeg4_encode_video_packet_header(MpegEncContext *s);
 void ff_mpeg4_clean_buffers(MpegEncContext *s);
 void ff_mpeg4_stuffing(PutBitContext *pbc);

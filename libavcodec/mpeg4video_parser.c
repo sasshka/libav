@@ -20,6 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "internal.h"
 #include "parser.h"
 #include "mpegvideo.h"
@@ -77,19 +78,19 @@ static int mpeg4_decode_header(AVCodecParserContext *s1, AVCodecContext *avctx,
     struct Mp4vParseContext *pc = s1->priv_data;
     Mpeg4DecContext *dec_ctx = &pc->dec_ctx;
     MpegEncContext *s = &dec_ctx->m;
-    GetBitContext gb1, *gb = &gb1;
+    BitstreamContext bc1, *bc = &bc1;
     int ret;
 
     s->avctx               = avctx;
     s->current_picture_ptr = &s->current_picture;
 
     if (avctx->extradata_size && pc->first_picture) {
-        init_get_bits(gb, avctx->extradata, avctx->extradata_size * 8);
-        ret = ff_mpeg4_decode_picture_header(dec_ctx, gb);
+        bitstream_init8(bc, avctx->extradata, avctx->extradata_size);
+        ret = ff_mpeg4_decode_picture_header(dec_ctx, bc);
     }
 
-    init_get_bits(gb, buf, 8 * buf_size);
-    ret = ff_mpeg4_decode_picture_header(dec_ctx, gb);
+    bitstream_init8(bc, buf, buf_size);
+    ret = ff_mpeg4_decode_picture_header(dec_ctx, bc);
     if (s->width && (!avctx->width || !avctx->height ||
                      !avctx->coded_width || !avctx->coded_height)) {
         ret = ff_set_dimensions(avctx, s->width, s->height);

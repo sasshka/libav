@@ -35,7 +35,7 @@
 #include "blockdsp.h"
 #include "error_resilience.h"
 #include "fdctdsp.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "h263dsp.h"
 #include "hpeldsp.h"
 #include "idctdsp.h"
@@ -344,7 +344,6 @@ typedef struct MpegEncContext {
     /* error concealment / resync */
     int resync_mb_x;                 ///< x position of last resync marker
     int resync_mb_y;                 ///< y position of last resync marker
-    GetBitContext last_resync_gb;    ///< used to search for the next resync marker
     BitstreamContext last_resync_bc;
     int mb_num_left;                 ///< number of MBs left in this video packet (for partitioned Slices only)
     int next_p_frame_damaged;        ///< set if the next p frame is damaged, to avoid showing trashed B-frames
@@ -430,7 +429,6 @@ typedef struct MpegEncContext {
     int mspel;
 
     /* decompression specific */
-    GetBitContext gb;
     BitstreamContext bc;
 
     /* MPEG-1 specific */
