@@ -20,10 +20,11 @@
 #define AVCODEC_INTRAX8_H
 
 #include "blockdsp.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "idctdsp.h"
 #include "intrax8dsp.h"
 #include "mpegpicture.h"
+#include "vlc.h"
 
 typedef struct IntraX8Context {
     VLC *j_ac_vlc[4]; // they point to the static j_mb_vlc
@@ -48,7 +49,7 @@ typedef struct IntraX8Context {
     int qsum;
     int loopfilter;
     AVFrame *frame;
-    GetBitContext *gb;
+    BitstreamContext *bc;
 
     // calculated per frame
     int quant_dc_chroma;
@@ -106,7 +107,7 @@ void ff_intrax8_common_end(IntraX8Context *w);
  * @param loopfilter enable filter after decoding a block
  */
 int ff_intrax8_decode_picture(IntraX8Context *w, Picture *pict,
-                              GetBitContext *gb, int *mb_x, int *mb_y,
+                              BitstreamContext *bc, int *mb_x, int *mb_y,
                               int quant, int halfpq,
                               int loopfilter, int lowdelay);
 

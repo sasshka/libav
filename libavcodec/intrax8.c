@@ -22,13 +22,14 @@
  */
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 #include "idctdsp.h"
 #include "msmpeg4data.h"
 #include "intrax8huf.h"
 #include "intrax8.h"
 #include "intrax8dsp.h"
 #include "mpegutils.h"
+#include "vlc.h"
 
 #define MAX_TABLE_DEPTH(table_bits, max_bits) \
     ((max_bits + table_bits - 1) / table_bits)
@@ -139,7 +140,7 @@ static inline void x8_select_ac_table(IntraX8Context *const w, int mode)
     if (w->j_ac_vlc[mode])
         return;
 
-    table_index       = get_bits(w->gb, 3);
+    table_index       = bitstream_read(w->bc, 3);
     // 2 modes use same tables
     w->j_ac_vlc[mode] = &j_ac_vlc[w->quant < 13][mode >> 1][table_index];
 
@@ -149,13 +150,13 @@ static inline void x8_select_ac_table(IntraX8Context *const w, int mode)
 static inline int x8_get_orient_vlc(IntraX8Context *w)
 {
     if (!w->j_orient_vlc) {
-        int table_index = get_bits(w->gb, 1 + (w->quant < 13));
+        int table_index = bitstream_read(w->bc, 1 + (w->quant < 13));
         w->j_orient_vlc = &j_orient_vlc[w->quant < 13][table_index];
     }
     assert(w->j_orient_vlc);
     assert(w->j_orient_vlc->table);
 
-    return get_vlc2(w->gb, w->j_orient_vlc->table, OR_VLC_BITS, OR_VLC_MTD);
+    return bitstream_read_vlc(w->bc, w->j_orient_vlc->table, OR_VLC_BITS, OR_VLC_MTD);
 }
 
 #define extra_bits(eb)  (eb)        // 3 bits
@@ -211,7 +212,7 @@ static void x8_get_ac_rlf(IntraX8Context *const w, const int mode,
     int i, e;
 
 //    x8_select_ac_table(w, mode);
-    i = get_vlc2(w->gb, w->j_ac_vlc[mode]->table, AC_VLC_BITS, AC_VLC_MTD);
+    i = bitstream_read_vlc(w->bc, w->j_ac_vlc[mode]->table, AC_VLC_BITS, AC_VLC_MTD);
 
     if (i < 46) { // [0-45]
         int t, l;
@@ -250,8 +251,8 @@ static void x8_get_ac_rlf(IntraX8Context *const w, const int mode,
         i -= 46;
         sm = ac_decode_table[i];
 
-        e    = get_bits(w->gb, sm & 0xF);
-        sm >>= 8;                               // 3 bits
+        e    = bitstream_read(w->bc, sm & 0xF);
+        sm >>= 8;                               // 3bits
         mask = sm & 0xff;
         sm >>= 8;                               // 1 bit
 
@@ -267,13 +268,13 @@ static void x8_get_ac_rlf(IntraX8Context *const w, const int mode,
         };
 
         *final = !(i & 1);
-        e      = get_bits(w->gb, 5); // get the extra bits
+        e      = bitstream_read(w->bc, 5); // get the extra bits
         *run   = crazy_mix_runlevel[e] >> 4;
         *level = crazy_mix_runlevel[e] & 0x0F;
     } else {
-        *level = get_bits(w->gb, 7 - 3 * (i & 1));
-        *run   = get_bits(w->gb, 6);
-        *final = get_bits1(w->gb);
+        *level = bitstream_read(w->bc, 7 - 3 * (i & 1));
+        *run   = bitstream_read(w->bc, 6);
+        *final = bitstream_read_bit(w->bc);
     }
     return;
 }
@@ -292,14 +293,14 @@ static int x8_get_dc_rlf(IntraX8Context *const w, const int mode,
 
     assert(mode < 3);
     if (!w->j_dc_vlc[mode]) {
-        int table_index = get_bits(w->gb, 3);
+        int table_index = bitstream_read(w->bc, 3);
         // 4 modes, same table
         w->j_dc_vlc[mode] = &j_dc_vlc[w->quant < 13][table_index];
     }
     assert(w->j_dc_vlc);
     assert(w->j_dc_vlc[mode]->table);
 
-    i = get_vlc2(w->gb, w->j_dc_vlc[mode]->table, DC_VLC_BITS, DC_VLC_MTD);
+    i = bitstream_read_vlc(w->bc, w->j_dc_vlc[mode]->table, DC_VLC_BITS, DC_VLC_MTD);
 
     /* (i >= 17) { i -= 17; final =1; } */
     c      = i > 16;
@@ -313,7 +314,7 @@ static int x8_get_dc_rlf(IntraX8Context *const w, const int mode,
     c  = (i + 1) >> 1; // hackish way to calculate dc_extra_sbits[]
     c -= c > 1;
 
-    e = get_bits(w->gb, c); // get the extra bits
+    e = bitstream_read(w->bc, c); // get the extra bits
     i = dc_index_offset[i] + (e >> 1);
 
     e      = -(e & 1);     // 0, 0xffffff
@@ -634,7 +635,7 @@ static int x8_decode_intra_mb(IntraX8Context *const w, const int chroma)
             level  = (level + 1) * w->dquant;
             level += w->qsum;
 
-            sign  = -get_bits1(w->gb);
+            sign  = -bitstream_read_bit(w->bc);
             level = (level ^ sign) - sign;
 
             if (use_quant_matrix)
@@ -770,19 +771,19 @@ av_cold void ff_intrax8_common_end(IntraX8Context *w)
 }
 
 int ff_intrax8_decode_picture(IntraX8Context *const w, Picture *pict,
-                              GetBitContext *gb, int *mb_x, int *mb_y,
+                              BitstreamContext *bc, int *mb_x, int *mb_y,
                               int dquant, int quant_offset,
                               int loopfilter, int lowdelay)
 {
     int mb_xy;
 
-    w->gb     = gb;
+    w->bc     = bc;
     w->dquant = dquant;
     w->quant  = dquant >> 1;
     w->qsum   = quant_offset;
     w->frame  = pict->f;
     w->loopfilter = loopfilter;
-    w->use_quant_matrix = get_bits1(w->gb);
+    w->use_quant_matrix = bitstream_read_bit(w->bc);
 
     w->mb_x = *mb_x;
     w->mb_y = *mb_y;
