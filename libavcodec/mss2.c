@@ -24,6 +24,8 @@
  */
 
 #include "libavutil/avassert.h"
+
+#include "bitstream.h"
 #include "error_resilience.h"
 #include "internal.h"
 #include "mpeg_er.h"
@@ -33,6 +35,7 @@
 #include "wmv2data.h"
 #include "mss12.h"
 #include "mss2dsp.h"
+#include "vlc.h"
 
 typedef struct MSS2Context {
     VC1Context     v;
@@ -232,7 +235,7 @@ static int decode_555(GetByteContext *gB, uint16_t *dst, int stride,
     return 0;
 }
 
-static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, int pal_stride,
+static int decode_rle(BitstreamContext *bc, uint8_t *pal_dst, int pal_stride,
                       uint8_t *rgb_dst, int rgb_stride, uint32_t *pal,
                       int keyframe, int kf_slipt, int slice, int w, int h)
 {
@@ -250,10 +253,10 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, int pal_stride,
     if (!keyframe) {
         int x, y, clipw, cliph;
 
-        x     = get_bits(gb, 12);
-        y     = get_bits(gb, 12);
-        clipw = get_bits(gb, 12) + 1;
-        cliph = get_bits(gb, 12) + 1;
+        x     = bitstream_read(bc, 12);
+        y     = bitstream_read(bc, 12);
+        clipw = bitstream_read(bc, 12) + 1;
+        cliph = bitstream_read(bc, 12) + 1;
 
         if (x + clipw > w || y + cliph > h)
             return AVERROR_INVALIDDATA;
@@ -276,11 +279,11 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, int pal_stride,
     /* read explicit codes */
     do {
         while (current_codes--) {
-            int symbol = get_bits(gb, 8);
+            int symbol = bitstream_read(bc, 8);
             if (symbol >= 204 - keyframe)
                 symbol += 14 - keyframe;
             else if (symbol > 189)
-                symbol = get_bits1(gb) + (symbol << 1) - 190;
+                symbol = bitstream_read_bit(bc) + (symbol << 1) - 190;
             if (bits[symbol])
                 return AVERROR_INVALIDDATA;
             bits[symbol]  = current_length;
@@ -290,7 +293,7 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, int pal_stride,
         current_length++;
         next_code     <<= 1;
         remaining_codes = (1 << current_length) - next_code;
-        current_codes   = get_bits(gb, av_ceil_log2(remaining_codes + 1));
+        current_codes   = bitstream_read(bc, av_ceil_log2(remaining_codes + 1));
         if (current_length > 22 || current_codes > remaining_codes)
             return AVERROR_INVALIDDATA;
     } while (current_codes != remaining_codes);
@@ -327,18 +330,18 @@ static int decode_rle(GetBitContext *gb, uint8_t *pal_dst, int pal_stride,
         uint8_t *rp = rgb_dst;
         do {
             if (repeat-- < 1) {
-                int b = get_vlc2(gb, vlc.table, 9, 3);
+                int b = bitstream_read_vlc(bc, vlc.table, 9, 3);
                 if (b < 256)
                     last_symbol = b;
                 else if (b < 268) {
                     b -= 256;
                     if (b == 11)
-                        b = get_bits(gb, 4) + 10;
+                        b = bitstream_read(bc, 4) + 10;
 
                     if (!b)
                         repeat = 0;
                     else
-                        repeat = get_bits(gb, b);
+                        repeat = bitstream_read(bc, b);
 
                     repeat += (1 << b) - 1;
 
@@ -381,11 +384,11 @@ static int decode_wmv9(AVCodecContext *avctx, const uint8_t *buf, int buf_size,
 
     ff_mpeg_flush(avctx);
 
-    init_get_bits(&s->gb, buf, buf_size * 8);
+    bitstream_init8(&s->bc, buf, buf_size);
 
     s->loop_filter = avctx->skip_loop_filter < AVDISCARD_ALL;
 
-    if (ff_vc1_parse_frame_header(v, &s->gb) < 0) {
+    if (ff_vc1_parse_frame_header(v, &s->bc) < 0) {
         av_log(v->s.avctx, AV_LOG_ERROR, "header error\n");
         return AVERROR_INVALIDDATA;
     }
@@ -467,7 +470,7 @@ static int mss2_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     MSS2Context *ctx = avctx->priv_data;
     MSS12Context *c  = &ctx->c;
     AVFrame *frame   = data;
-    GetBitContext gb;
+    BitstreamContext bc;
     GetByteContext gB;
     ArithCoder acoder;
 
@@ -477,27 +480,27 @@ static int mss2_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     int used_rects = 0, i, implicit_rect = 0, av_uninit(wmv9_mask);
 
     av_assert0(AV_INPUT_BUFFER_PADDING_SIZE >=
-               ARITH2_PADDING + (MIN_CACHE_BITS + 7) / 8);
+               ARITH2_PADDING + (25 + 7) / 8);
 
-    init_get_bits(&gb, buf, buf_size * 8);
+    bitstream_init8(&bc, buf, buf_size);
 
-    if (keyframe = get_bits1(&gb))
-        skip_bits(&gb, 7);
-    has_wmv9 = get_bits1(&gb);
-    has_mv   = keyframe ? 0 : get_bits1(&gb);
-    is_rle   = get_bits1(&gb);
-    is_555   = is_rle && get_bits1(&gb);
+    if (keyframe = bitstream_read_bit(&bc))
+        bitstream_skip(&bc, 7);
+    has_wmv9 = bitstream_read_bit(&bc);
+    has_mv   = keyframe ? 0 : bitstream_read_bit(&bc);
+    is_rle   = bitstream_read_bit(&bc);
+    is_555   = is_rle && bitstream_read_bit(&bc);
     if (c->slice_split > 0)
         ctx->split_position = c->slice_split;
     else if (c->slice_split < 0) {
-        if (get_bits1(&gb)) {
-            if (get_bits1(&gb)) {
-                if (get_bits1(&gb))
-                    ctx->split_position = get_bits(&gb, 16);
+        if (bitstream_read_bit(&bc)) {
+            if (bitstream_read_bit(&bc)) {
+                if (bitstream_read_bit(&bc))
+                    ctx->split_position = bitstream_read(&bc, 16);
                 else
-                    ctx->split_position = get_bits(&gb, 12);
+                    ctx->split_position = bitstream_read(&bc, 12);
             } else
-                ctx->split_position = get_bits(&gb, 8) << 4;
+                ctx->split_position = bitstream_read(&bc, 8) << 4;
         } else {
             if (keyframe)
                 ctx->split_position = avctx->height / 2;
@@ -509,9 +512,9 @@ static int mss2_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                            ctx->split_position > avctx->height - 1))
         return AVERROR_INVALIDDATA;
 
-    align_get_bits(&gb);
-    buf      += get_bits_count(&gb) >> 3;
-    buf_size -= get_bits_count(&gb) >> 3;
+    bitstream_align(&bc);
+    buf      += bitstream_tell(&bc) >> 3;
+    buf_size -= bitstream_tell(&bc) >> 3;
 
     if (buf_size < 1)
         return AVERROR_INVALIDDATA;
@@ -641,24 +644,24 @@ static int mss2_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 ff_mss12_slicecontext_reset(&ctx->sc[1]);
         }
         if (is_rle) {
-            init_get_bits(&gb, buf, buf_size * 8);
-            if (ret = decode_rle(&gb, c->pal_pic, c->pal_stride,
+            bitstream_init8(&bc, buf, buf_size);
+            if (ret = decode_rle(&bc, c->pal_pic, c->pal_stride,
                                  c->rgb_pic, c->rgb_stride, c->pal, keyframe,
                                  ctx->split_position, 0,
                                  avctx->width, avctx->height))
                 return ret;
-            align_get_bits(&gb);
+            bitstream_align(&bc);
 
             if (c->slice_split)
-                if (ret = decode_rle(&gb, c->pal_pic, c->pal_stride,
+                if (ret = decode_rle(&bc, c->pal_pic, c->pal_stride,
                                      c->rgb_pic, c->rgb_stride, c->pal, keyframe,
                                      ctx->split_position, 1,
                                      avctx->width, avctx->height))
                     return ret;
 
-            align_get_bits(&gb);
-            buf      += get_bits_count(&gb) >> 3;
-            buf_size -= get_bits_count(&gb) >> 3;
+            bitstream_align(&bc);
+            buf      += bitstream_tell(&bc) >> 3;
+            buf_size -= bitstream_tell(&bc) >> 3;
         } else if (!implicit_rect || wmv9_mask != -1) {
             if (c->corrupted)
                 return AVERROR_INVALIDDATA;

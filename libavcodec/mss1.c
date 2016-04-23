@@ -25,6 +25,7 @@
  */
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "internal.h"
 #include "mss12.h"
 
@@ -56,7 +57,7 @@ static void arith_normalise(ArithCoder *c)
         c->low   <<= 1;
         c->high  <<= 1;
         c->high   |= 1;
-        c->value  |= get_bits1(c->gbc.gb);
+        c->value  |= bitstream_read_bit(c->gbc.bc);
     }
 }
 
@@ -107,12 +108,12 @@ static int arith_get_prob(ArithCoder *c, int16_t *probs)
 
 ARITH_GET_MODEL_SYM()
 
-static void arith_init(ArithCoder *c, GetBitContext *gb)
+static void arith_init(ArithCoder *c, BitstreamContext *bc)
 {
     c->low           = 0;
     c->high          = 0xFFFF;
-    c->value         = get_bits(gb, 16);
-    c->gbc.gb        = gb;
+    c->value         = bitstream_read(bc, 16);
+    c->gbc.bc        = bc;
     c->get_model_sym = arith_get_model_sym;
     c->get_number    = arith_get_number;
 }
@@ -143,13 +144,13 @@ static int mss1_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     int buf_size = avpkt->size;
     MSS1Context *ctx = avctx->priv_data;
     MSS12Context *c = &ctx->ctx;
-    GetBitContext gb;
+    BitstreamContext bc;
     ArithCoder acoder;
     int pal_changed = 0;
     int ret;
 
-    init_get_bits(&gb, buf, buf_size * 8);
-    arith_init(&acoder, &gb);
+    bitstream_init8(&bc, buf, buf_size);
+    arith_init(&acoder, &bc);
 
     if ((ret = ff_reget_buffer(avctx, ctx->pic)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "reget_buffer() failed\n");

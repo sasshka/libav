@@ -26,11 +26,12 @@
  */
 
 #include "avcodec.h"
+#include "bitstream.h"
 #include "bytestream.h"
-#include "get_bits.h"
 #include "internal.h"
 #include "mss34dsp.h"
 #include "unary.h"
+#include "vlc.h"
 
 #define HEADER_SIZE 8
 
@@ -202,28 +203,28 @@ static av_cold void mss4_free_vlcs(MSS4Context *ctx)
  * nbits = 1 -> -1, 1
  * nbits = 2 -> -3, -2, 2, 3
  */
-static av_always_inline int get_coeff_bits(GetBitContext *gb, int nbits)
+static av_always_inline int get_coeff_bits(BitstreamContext *bc, int nbits)
 {
     int val;
 
     if (!nbits)
         return 0;
 
-    val = get_bits(gb, nbits);
+    val = bitstream_read(bc, nbits);
     if (val < (1 << (nbits - 1)))
         val -= (1 << nbits) - 1;
 
     return val;
 }
 
-static inline int get_coeff(GetBitContext *gb, VLC *vlc)
+static inline int get_coeff(BitstreamContext *bc, VLC *vlc)
 {
-    int val = get_vlc2(gb, vlc->table, vlc->bits, 2);
+    int val = bitstream_read_vlc(bc, vlc->table, vlc->bits, 2);
 
-    return get_coeff_bits(gb, val);
+    return get_coeff_bits(bc, val);
 }
 
-static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
+static int mss4_decode_dct(BitstreamContext *bc, VLC *dc_vlc, VLC *ac_vlc,
                            int *block, int *dc_cache,
                            int bx, int by, uint16_t *quant_mat)
 {
@@ -231,7 +232,7 @@ static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
 
     memset(block, 0, sizeof(*block) * 64);
 
-    dc = get_coeff(gb, dc_vlc);
+    dc = get_coeff(bc, dc_vlc);
     // DC prediction is the same as in MSS3
     if (by) {
         if (bx) {
@@ -255,7 +256,7 @@ static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
     block[0]       = dc * quant_mat[0];
 
     while (pos < 64) {
-        val = get_vlc2(gb, ac_vlc->table, 9, 2);
+        val = bitstream_read_vlc(bc, ac_vlc->table, 9, 2);
         if (!val)
             return 0;
         if (val == -1)
@@ -265,7 +266,7 @@ static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
             continue;
         }
         skip = val >> 4;
-        val  = get_coeff_bits(gb, val & 0xF);
+        val  = get_coeff_bits(bc, val & 0xF);
         pos += skip;
         if (pos >= 64)
             return -1;
@@ -278,7 +279,7 @@ static int mss4_decode_dct(GetBitContext *gb, VLC *dc_vlc, VLC *ac_vlc,
     return pos == 64 ? 0 : -1;
 }
 
-static int mss4_decode_dct_block(MSS4Context *c, GetBitContext *gb,
+static int mss4_decode_dct_block(MSS4Context *c, BitstreamContext *bc,
                                  uint8_t *dst[3], int mb_x, int mb_y)
 {
     int i, j, k, ret;
@@ -289,7 +290,7 @@ static int mss4_decode_dct_block(MSS4Context *c, GetBitContext *gb,
             int xpos = mb_x * 2 + i;
             c->dc_cache[j][TOP_LEFT] = c->dc_cache[j][TOP];
             c->dc_cache[j][TOP]      = c->prev_dc[0][mb_x * 2 + i];
-            ret = mss4_decode_dct(gb, c->dc_vlc, c->ac_vlc, c->block,
+            ret = mss4_decode_dct(bc, c->dc_vlc, c->ac_vlc, c->block,
                                   c->dc_cache[j],
                                   xpos, mb_y * 2 + j, c->quant_mat[0]);
             if (ret)
@@ -305,7 +306,7 @@ static int mss4_decode_dct_block(MSS4Context *c, GetBitContext *gb,
     for (i = 1; i < 3; i++) {
         c->dc_cache[i + 1][TOP_LEFT] = c->dc_cache[i + 1][TOP];
         c->dc_cache[i + 1][TOP]      = c->prev_dc[i][mb_x];
-        ret = mss4_decode_dct(gb, c->dc_vlc + 1, c->ac_vlc + 1,
+        ret = mss4_decode_dct(bc, c->dc_vlc + 1, c->ac_vlc + 1,
                               c->block, c->dc_cache[i + 1], mb_x, mb_y,
                               c->quant_mat[1]);
         if (ret)
@@ -326,7 +327,7 @@ static int mss4_decode_dct_block(MSS4Context *c, GetBitContext *gb,
     return 0;
 }
 
-static void read_vec_pos(GetBitContext *gb, int *vec_pos, int *sel_flag,
+static void read_vec_pos(BitstreamContext *bc, int *vec_pos, int *sel_flag,
                          int *sel_len, int *prev)
 {
     int i, y_flag = 0;
@@ -336,10 +337,10 @@ static void read_vec_pos(GetBitContext *gb, int *vec_pos, int *sel_flag,
             vec_pos[i] = 0;
             continue;
         }
-        if ((!i && !y_flag) || get_bits1(gb)) {
+        if ((!i && !y_flag) || bitstream_read_bit(bc)) {
             if (sel_len[i] > 0) {
                 int pval = prev[i];
-                vec_pos[i] = get_bits(gb, sel_len[i]);
+                vec_pos[i] = bitstream_read(bc, sel_len[i]);
                 if (vec_pos[i] >= pval)
                     vec_pos[i]++;
             } else {
@@ -352,14 +353,14 @@ static void read_vec_pos(GetBitContext *gb, int *vec_pos, int *sel_flag,
     }
 }
 
-static int get_value_cached(GetBitContext *gb, int vec_pos, uint8_t *vec,
+static int get_value_cached(BitstreamContext *bc, int vec_pos, uint8_t *vec,
                             int vec_size, int component, int shift, int *prev)
 {
     if (vec_pos < vec_size)
         return vec[vec_pos];
-    if (!get_bits1(gb))
+    if (!bitstream_read_bit(bc))
         return prev[component];
-    prev[component] = get_bits(gb, 8 - shift) << shift;
+    prev[component] = bitstream_read(bc, 8 - shift) << shift;
     return prev[component];
 }
 
@@ -376,7 +377,7 @@ static int get_value_cached(GetBitContext *gb, int vec_pos, uint8_t *vec,
  * positions can be updated or reused from the state of the previous line
  * or previous pixel.
  */
-static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
+static int mss4_decode_image_block(MSS4Context *ctx, BitstreamContext *bc,
                                    uint8_t *picdst[3], int mb_x, int mb_y)
 {
     uint8_t vec[3][4];
@@ -395,9 +396,9 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
         dst[i] = ctx->imgbuf[i];
 
     for (i = 0; i < 3; i++) {
-        vec_len[i] = vec_len_syms[!!i][get_unary(gb, 0, 3)];
+        vec_len[i] = vec_len_syms[!!i][get_unary(bc, 0, 3)];
         for (j = 0; j < vec_len[i]; j++) {
-            vec[i][j]  = get_coeff(gb, &ctx->vec_entry_vlc[!!i]);
+            vec[i][j]  = get_coeff(bc, &ctx->vec_entry_vlc[!!i]);
             vec[i][j] += ctx->prev_vec[i][j];
             ctx->prev_vec[i][j] = vec[i][j];
         }
@@ -406,16 +407,16 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
     }
 
     for (j = 0; j < 16; j++) {
-        if (get_bits1(gb)) {
+        if (bitstream_read_bit(bc)) {
             split = 0;
-            if (get_bits1(gb)) {
+            if (bitstream_read_bit(bc)) {
                 prev_mode[0] = 0;
                 vals[0] = vals[1] = vals[2] = 0;
                 mode = 2;
             } else {
-                mode = get_bits1(gb);
+                mode = bitstream_read_bit(bc);
                 if (mode)
-                    split = get_bits(gb, 4);
+                    split = bitstream_read(bc, 4);
             }
             for (i = 0; i < 16; i++) {
                 if (mode <= 1) {
@@ -423,21 +424,21 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
                     vals[1] = (prev_mode[i] >> 3) & 7;
                     vals[2] =  prev_mode[i] >> 6;
                     if (mode == 1 && i == split) {
-                        read_vec_pos(gb, vals, sel_flag, sel_len, vals);
+                        read_vec_pos(bc, vals, sel_flag, sel_len, vals);
                     }
                 } else if (mode == 2) {
-                    if (get_bits1(gb))
-                        read_vec_pos(gb, vals, sel_flag, sel_len, vals);
+                    if (bitstream_read_bit(bc))
+                        read_vec_pos(bc, vals, sel_flag, sel_len, vals);
                 }
                 for (k = 0; k < 3; k++)
-                    *dst[k]++ = get_value_cached(gb, vals[k], vec[k],
+                    *dst[k]++ = get_value_cached(bc, vals[k], vec[k],
                                                  vec_len[k], k,
                                                  val_shift, prev_pix);
                 prev_mode[i] = MKVAL(vals);
             }
         } else {
-            if (get_bits1(gb)) {
-                split = get_bits(gb, 4);
+            if (bitstream_read_bit(bc)) {
+                split = bitstream_read(bc, 4);
                 if (split >= prev_split)
                     split++;
                 prev_split = split;
@@ -450,7 +451,7 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
                 vals[2] =  prev_mode[0] >> 6;
                 for (i = 0; i < 3; i++) {
                     for (k = 0; k < split; k++) {
-                        *dst[i]++ = get_value_cached(gb, vals[i], vec[i],
+                        *dst[i]++ = get_value_cached(bc, vals[i], vec[i],
                                                      vec_len[i], i, val_shift,
                                                      prev_pix);
                         prev_mode[k] = MKVAL(vals);
@@ -462,13 +463,13 @@ static int mss4_decode_image_block(MSS4Context *ctx, GetBitContext *gb,
                 vals[0] =  prev_vec1       & 7;
                 vals[1] = (prev_vec1 >> 3) & 7;
                 vals[2] =  prev_vec1 >> 6;
-                if (get_bits1(gb)) {
-                    read_vec_pos(gb, vals, sel_flag, sel_len, vals);
+                if (bitstream_read_bit(bc)) {
+                    read_vec_pos(bc, vals, sel_flag, sel_len, vals);
                     prev_vec1 = MKVAL(vals);
                 }
                 for (i = 0; i < 3; i++) {
                     for (k = 0; k < 16 - split; k++) {
-                        *dst[i]++ = get_value_cached(gb, vals[i], vec[i],
+                        *dst[i]++ = get_value_cached(bc, vals[i], vec[i],
                                                      vec_len[i], i, val_shift,
                                                      prev_pix);
                         prev_mode[split + k] = MKVAL(vals);
@@ -511,7 +512,7 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     MSS4Context *c = avctx->priv_data;
-    GetBitContext gb;
+    BitstreamContext bb;
     GetByteContext bc;
     uint8_t *dst[3];
     int width, height, quality, frame_type;
@@ -574,7 +575,7 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
             ff_mss34_gen_quant_mat(c->quant_mat[i], quality, !i);
     }
 
-    init_get_bits(&gb, buf + HEADER_SIZE, (buf_size - HEADER_SIZE) * 8);
+    bitstream_init8(&bb, buf + HEADER_SIZE, (buf_size - HEADER_SIZE));
 
     mb_width  = FFALIGN(width,  16) >> 4;
     mb_height = FFALIGN(height, 16) >> 4;
@@ -586,10 +587,10 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     for (y = 0; y < mb_height; y++) {
         memset(c->dc_cache, 0, sizeof(c->dc_cache));
         for (x = 0; x < mb_width; x++) {
-            blk_type = decode012(&gb);
+            blk_type = bitstream_decode012(&bb);
             switch (blk_type) {
             case DCT_BLOCK:
-                if (mss4_decode_dct_block(c, &gb, dst, x, y) < 0) {
+                if (mss4_decode_dct_block(c, &bb, dst, x, y) < 0) {
                     av_log(avctx, AV_LOG_ERROR,
                            "Error decoding DCT block %d,%d\n",
                            x, y);
@@ -597,7 +598,7 @@ static int mss4_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 }
                 break;
             case IMAGE_BLOCK:
-                if (mss4_decode_image_block(c, &gb, dst, x, y) < 0) {
+                if (mss4_decode_image_block(c, &bb, dst, x, y) < 0) {
                     av_log(avctx, AV_LOG_ERROR,
                            "Error decoding VQ block %d,%d\n",
                            x, y);
