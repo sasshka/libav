@@ -20,20 +20,21 @@
 
 #include "libavutil/imgutils.h"
 
+#include "bitstream.h"
 #include "flv.h"
 #include "h263.h"
 #include "mpegvideo.h"
 #include "mpegvideodata.h"
 
-void ff_flv2_decode_ac_esc(GetBitContext *gb, int *level, int *run, int *last)
+void ff_flv2_decode_ac_esc(BitstreamContext *bc, int *level, int *run, int *last)
 {
-    int is11 = get_bits1(gb);
-    *last = get_bits1(gb);
-    *run  = get_bits(gb, 6);
+    int is11 = bitstream_read_bit(bc);
+    *last = bitstream_read_bit(bc);
+    *run  = bitstream_read(bc, 6);
     if (is11)
-        *level = get_sbits(gb, 11);
+        *level = bitstream_read_signed(bc, 11);
     else
-        *level = get_sbits(gb, 7);
+        *level = bitstream_read_signed(bc, 7);
 }
 
 int ff_flv_decode_picture_header(MpegEncContext *s)
@@ -41,26 +42,26 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
     int format, width, height;
 
     /* picture header */
-    if (get_bits_long(&s->gb, 17) != 1) {
+    if (bitstream_read(&s->bc, 17) != 1) {
         av_log(s->avctx, AV_LOG_ERROR, "Bad picture start code\n");
         return -1;
     }
-    format = get_bits(&s->gb, 5);
+    format = bitstream_read(&s->bc, 5);
     if (format != 0 && format != 1) {
         av_log(s->avctx, AV_LOG_ERROR, "Bad picture format\n");
         return -1;
     }
     s->h263_flv       = format + 1;
-    s->picture_number = get_bits(&s->gb, 8); /* picture timestamp */
-    format            = get_bits(&s->gb, 3);
+    s->picture_number = bitstream_read(&s->bc, 8); /* picture timestamp */
+    format            = bitstream_read(&s->bc, 3);
     switch (format) {
     case 0:
-        width  = get_bits(&s->gb, 8);
-        height = get_bits(&s->gb, 8);
+        width  = bitstream_read(&s->bc, 8);
+        height = bitstream_read(&s->bc, 8);
         break;
     case 1:
-        width  = get_bits(&s->gb, 16);
-        height = get_bits(&s->gb, 16);
+        width  = bitstream_read(&s->bc, 16);
+        height = bitstream_read(&s->bc, 16);
         break;
     case 2:
         width  = 352;
@@ -91,13 +92,13 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
     s->width  = width;
     s->height = height;
 
-    s->pict_type = AV_PICTURE_TYPE_I + get_bits(&s->gb, 2);
+    s->pict_type = AV_PICTURE_TYPE_I + bitstream_read(&s->bc, 2);
     s->droppable = s->pict_type > AV_PICTURE_TYPE_P;
     if (s->droppable)
         s->pict_type = AV_PICTURE_TYPE_P;
 
-    skip_bits1(&s->gb); /* deblocking flag */
-    s->chroma_qscale = s->qscale = get_bits(&s->gb, 5);
+    bitstream_skip(&s->bc, 1); /* deblocking flag */
+    s->chroma_qscale = s->qscale = bitstream_read(&s->bc, 5);
 
     s->h263_plus = 0;
 
@@ -105,8 +106,8 @@ int ff_flv_decode_picture_header(MpegEncContext *s)
     s->h263_long_vectors = 0;
 
     /* PEI */
-    while (get_bits1(&s->gb) != 0)
-        skip_bits(&s->gb, 8);
+    while (bitstream_read_bit(&s->bc) != 0)
+        bitstream_skip(&s->bc, 8);
     s->f_code = 1;
 
     if (s->avctx->debug & FF_DEBUG_PICT_INFO) {
