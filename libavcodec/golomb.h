@@ -55,21 +55,21 @@ static inline int get_ue_golomb(BitstreamContext *bb)
     unsigned int buf;
     int ret;
 
-    buf = bitstream_peek(bb, 32);
+    buf = bitstream_peek(bb, 9);
 
-    if (buf >= (1 << 27)) {
-        buf >>= 32 - 9;
+    if (buf >= (1 << 4)) {
         bitstream_skip(bb, ff_golomb_vlc_len[buf]);
 
         ret = ff_ue_golomb_vlc_code[buf];
         return ret;
     } else {
-        int log = 2 * av_log2(buf) - 31;
-        buf >>= log;
-        buf--;
+        int buf2 = bitstream_peek(bb, 32);
+        int log = 2 * av_log2(buf2) - 31;
+        buf2 >>= log;
+        buf2--;
         bitstream_skip(bb, 32 - log);
 
-        return buf;
+        return buf2;
     }
 }
 
@@ -169,25 +169,25 @@ static inline int get_se_golomb(BitstreamContext *bb)
 {
     unsigned int buf;
 
-    buf = bitstream_peek(bb, 32);
+    buf = bitstream_peek(bb, 9);
 
-    if (buf >= (1 << 27)) {
-        buf >>= 32 - 9;
+    if (buf >= (1 << 4)) {
         bitstream_skip(bb, ff_golomb_vlc_len[buf]);
 
         return ff_se_golomb_vlc_code[buf];
     } else {
-        int log = 2 * av_log2(buf) - 31;
-        buf >>= log;
+        int buf2 = bitstream_peek(bb, 32);
+        int log = 2 * av_log2(buf2) - 31;
+        buf2 >>= log;
 
         bitstream_skip(bb, 32 - log);
 
-        if (buf & 1)
-            buf = -(buf >> 1);
+        if (buf2 & 1)
+            buf2 = -(buf2 >> 1);
         else
-            buf = (buf >> 1);
+            buf2 = (buf2 >> 1);
 
-        return buf;
+        return buf2;
     }
 }
 
