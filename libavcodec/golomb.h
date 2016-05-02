@@ -107,18 +107,19 @@ static inline unsigned svq3_get_ue_golomb(BitstreamContext *bb)
 {
     uint32_t buf;
 
-    buf = bitstream_peek(bb, 32);
+    buf = bitstream_peek(bb, 9);
 
-    if (buf & 0xAA800000) {
-        buf >>= 32 - 8;
+    if (buf & 0x155) {
+        buf >>= 1;
         bitstream_skip(bb, ff_interleaved_golomb_vlc_len[buf]);
 
         return ff_interleaved_ue_golomb_vlc_code[buf];
     } else {
-        unsigned ret = 1;
+        unsigned ret = (1 << 4) | ff_interleaved_dirac_golomb_vlc_code[buf >> 1];
 
+        bitstream_skip(bb, 8);
+        buf = bitstream_peek(bb, 8);
         do {
-            buf >>= 32 - 8;
             bitstream_skip(bb, FFMIN(ff_interleaved_golomb_vlc_len[buf], 8));
 
             if (ff_interleaved_golomb_vlc_len[buf] != 9) {
@@ -127,7 +128,7 @@ static inline unsigned svq3_get_ue_golomb(BitstreamContext *bb)
                 break;
             }
             ret = (ret << 4) | ff_interleaved_dirac_golomb_vlc_code[buf];
-            buf = bitstream_peek(bb, 32);
+            buf = bitstream_peek(bb, 8);
         } while (bitstream_bits_left(bb) > 0);
 
         return ret - 1;
