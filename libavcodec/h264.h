@@ -31,9 +31,10 @@
 #include "libavutil/buffer.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/thread.h"
+
+#include "bitstream.h"
 #include "cabac.h"
 #include "error_resilience.h"
-#include "get_bits.h"
 #include "h264_parse.h"
 #include "h264_sei.h"
 #include "h2645_parse.h"
@@ -300,7 +301,7 @@ typedef struct H264Ref {
 
 typedef struct H264SliceContext {
     struct H264Context *h264;
-    GetBitContext gb;
+    BitstreamContext bc;
     ERContext er;
 
     int slice_num;
@@ -445,7 +446,7 @@ typedef struct H264Context {
     H264DSPContext h264dsp;
     H264ChromaContext h264chroma;
     H264QpelContext h264qpel;
-    GetBitContext gb;
+    BitstreamContext bc;
 
     H264Picture DPB[H264_MAX_PICTURE_COUNT];
     H264Picture *cur_pic_ptr;
@@ -637,13 +638,13 @@ extern const uint16_t ff_h264_mb_sizes[4];
 /**
  * Decode SPS
  */
-int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
+int ff_h264_decode_seq_parameter_set(BitstreamContext *bc, AVCodecContext *avctx,
                                      H264ParamSets *ps);
 
 /**
  * Decode PPS
  */
-int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
+int ff_h264_decode_picture_parameter_set(BitstreamContext *bc, AVCodecContext *avctx,
                                          H264ParamSets *ps, int bit_length);
 
 /**
@@ -666,7 +667,7 @@ void ff_h264_remove_all_refs(H264Context *h);
  */
 int ff_h264_execute_ref_pic_marking(H264Context *h, MMCO *mmco, int mmco_count);
 
-int ff_h264_decode_ref_pic_marking(H264Context *h, GetBitContext *gb,
+int ff_h264_decode_ref_pic_marking(H264Context *h, BitstreamContext *bc,
                                    int first_slice);
 
 int ff_generate_sliding_window_mmcos(H264Context *h, int first_slice);

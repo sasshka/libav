@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 #include "avcodec.h"
-#include "get_bits.h"
+#include "bitstream.h"
 
 typedef struct H2645NAL {
     uint8_t *rbsp_buffer;
@@ -42,7 +42,7 @@ typedef struct H2645NAL {
     int raw_size;
     const uint8_t *raw_data;
 
-    GetBitContext gb;
+    BitstreamContext bc;
 
     /**
      * NAL unit type

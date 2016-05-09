@@ -28,6 +28,8 @@
 #include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/timer.h"
+
+#include "bitstream.h"
 #include "internal.h"
 #include "cabac.h"
 #include "cabac_functions.h"
@@ -923,12 +925,12 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     int frame_num, droppable, picture_structure;
     int mb_aff_frame = 0;
 
-    first_mb_in_slice = get_ue_golomb(&sl->gb);
+    first_mb_in_slice = get_ue_golomb(&sl->bc);
 
     if (first_mb_in_slice == 0) { // FIXME better field boundary detection
         if (h->current_slice && h->cur_pic_ptr && FIELD_PICTURE(h)) {
             ff_h264_field_end(h, sl, 1);
-        }
+            }
 
         h->current_slice = 0;
         if (!h->first_field) {
@@ -940,7 +942,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
         }
     }
 
-    slice_type = get_ue_golomb_31(&sl->gb);
+    slice_type = get_ue_golomb_31(&sl->bc);
     if (slice_type > 9) {
         av_log(h->avctx, AV_LOG_ERROR,
                "slice type %d too large at %d\n",
@@ -963,7 +965,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
         return AVERROR_INVALIDDATA;
     }
 
-    pps_id = get_ue_golomb(&sl->gb);
+    pps_id = get_ue_golomb(&sl->bc);
     if (pps_id >= MAX_PPS_COUNT) {
         av_log(h->avctx, AV_LOG_ERROR, "pps_id %u out of range\n", pps_id);
         return AVERROR_INVALIDDATA;
@@ -1082,7 +1084,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
         }
     }
 
-    frame_num = get_bits(&sl->gb, sps->log2_max_frame_num);
+    frame_num = bitstream_read(&sl->bc, sps->log2_max_frame_num);
     if (!h->setup_finished)
         h->poc.frame_num = frame_num;
 
@@ -1095,9 +1097,9 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     if (sps->frame_mbs_only_flag) {
         picture_structure = PICT_FRAME;
     } else {
-        field_pic_flag = get_bits1(&sl->gb);
+        field_pic_flag = bitstream_read_bit(&sl->bc);
         if (field_pic_flag) {
-            bottom_field_flag = get_bits1(&sl->gb);
+            bottom_field_flag = bitstream_read_bit(&sl->bc);
             picture_structure = PICT_TOP_FIELD + bottom_field_flag;
         } else {
             picture_structure = PICT_FRAME;
@@ -1304,29 +1306,29 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     }
 
     if (h->nal_unit_type == NAL_IDR_SLICE)
-        get_ue_golomb(&sl->gb); /* idr_pic_id */
+        get_ue_golomb(&sl->bc); /* idr_pic_id */
 
     if (sps->poc_type == 0) {
-        int poc_lsb = get_bits(&sl->gb, sps->log2_max_poc_lsb);
+        int poc_lsb = bitstream_read(&sl->bc, sps->log2_max_poc_lsb);
 
         if (!h->setup_finished)
             h->poc.poc_lsb = poc_lsb;
 
         if (pps->pic_order_present == 1 && h->picture_structure == PICT_FRAME) {
-            int delta_poc_bottom = get_se_golomb(&sl->gb);
+            int delta_poc_bottom = get_se_golomb(&sl->bc);
             if (!h->setup_finished)
                 h->poc.delta_poc_bottom = delta_poc_bottom;
         }
     }
 
     if (sps->poc_type == 1 && !sps->delta_pic_order_always_zero_flag) {
-        int delta_poc = get_se_golomb(&sl->gb);
+        int delta_poc = get_se_golomb(&sl->bc);
 
         if (!h->setup_finished)
             h->poc.delta_poc[0] = delta_poc;
 
         if (pps->pic_order_present == 1 && h->picture_structure == PICT_FRAME) {
-            delta_poc = get_se_golomb(&sl->gb);
+            delta_poc = get_se_golomb(&sl->bc);
 
             if (!h->setup_finished)
                 h->poc.delta_poc[1] = delta_poc;
@@ -1338,13 +1340,13 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
                          sps, &h->poc, h->picture_structure, h->nal_ref_idc);
 
     if (pps->redundant_pic_cnt_present)
-        sl->redundant_pic_count = get_ue_golomb(&sl->gb);
+        sl->redundant_pic_count = get_ue_golomb(&sl->bc);
 
     if (sl->slice_type_nos == AV_PICTURE_TYPE_B)
-        sl->direct_spatial_mv_pred = get_bits1(&sl->gb);
+        sl->direct_spatial_mv_pred = bitstream_read_bit(&sl->bc);
 
     ret = ff_h264_parse_ref_count(&sl->list_count, sl->ref_count,
-                                  &sl->gb, pps, sl->slice_type_nos,
+                                  &sl->bc, pps, sl->slice_type_nos,
                                   h->picture_structure);
     if (ret < 0)
         return ret;
@@ -1360,7 +1362,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     if ((pps->weighted_pred && sl->slice_type_nos == AV_PICTURE_TYPE_P) ||
         (pps->weighted_bipred_idc == 1 &&
          sl->slice_type_nos == AV_PICTURE_TYPE_B))
-        ff_h264_pred_weight_table(&sl->gb, sps, sl->ref_count,
+        ff_h264_pred_weight_table(&sl->bc, sps, sl->ref_count,
                                   sl->slice_type_nos, &sl->pwt);
     else if (pps->weighted_bipred_idc == 2 &&
              sl->slice_type_nos == AV_PICTURE_TYPE_B) {
@@ -1379,7 +1381,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     // further down the line. This may break decoding if the first slice is
     // corrupt, thus we only do this if frame-mt is enabled.
     if (h->nal_ref_idc) {
-        ret = ff_h264_decode_ref_pic_marking(h, &sl->gb,
+        ret = ff_h264_decode_ref_pic_marking(h, &sl->bc,
                                              !(h->avctx->active_thread_type & FF_THREAD_FRAME) ||
                                              h->current_slice == 0);
         if (ret < 0 && (h->avctx->err_recognition & AV_EF_EXPLODE))
@@ -1400,7 +1402,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     ff_h264_direct_ref_list_init(h, sl);
 
     if (sl->slice_type_nos != AV_PICTURE_TYPE_I && pps->cabac) {
-        tmp = get_ue_golomb_31(&sl->gb);
+        tmp = get_ue_golomb_31(&sl->bc);
         if (tmp > 2) {
             av_log(h->avctx, AV_LOG_ERROR, "cabac_init_idc %u overflow\n", tmp);
             return AVERROR_INVALIDDATA;
@@ -1409,7 +1411,7 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     }
 
     sl->last_qscale_diff = 0;
-    tmp = pps->init_qp + get_se_golomb(&sl->gb);
+    tmp = pps->init_qp + get_se_golomb(&sl->bc);
     if (tmp > 51 + 6 * (sps->bit_depth_luma - 8)) {
         av_log(h->avctx, AV_LOG_ERROR, "QP %u out of range\n", tmp);
         return AVERROR_INVALIDDATA;
@@ -1419,16 +1421,16 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
     sl->chroma_qp[1] = get_chroma_qp(h, 1, sl->qscale);
     // FIXME qscale / qp ... stuff
     if (sl->slice_type == AV_PICTURE_TYPE_SP)
-        get_bits1(&sl->gb); /* sp_for_switch_flag */
+        bitstream_read_bit(&sl->bc); /* sp_for_switch_flag */
     if (sl->slice_type == AV_PICTURE_TYPE_SP ||
         sl->slice_type == AV_PICTURE_TYPE_SI)
-        get_se_golomb(&sl->gb); /* slice_qs_delta */
+        get_se_golomb(&sl->bc); /* slice_qs_delta */
 
     sl->deblocking_filter     = 1;
     sl->slice_alpha_c0_offset = 0;
     sl->slice_beta_offset     = 0;
     if (pps->deblocking_filter_parameters_present) {
-        tmp = get_ue_golomb_31(&sl->gb);
+        tmp = get_ue_golomb_31(&sl->bc);
         if (tmp > 2) {
             av_log(h->avctx, AV_LOG_ERROR,
                    "deblocking_filter_idc %u out of range\n", tmp);
@@ -1439,8 +1441,8 @@ int ff_h264_decode_slice_header(H264Context *h, H264SliceContext *sl)
             sl->deblocking_filter ^= 1;  // 1<->0
 
         if (sl->deblocking_filter) {
-            sl->slice_alpha_c0_offset = get_se_golomb(&sl->gb) * 2;
-            sl->slice_beta_offset     = get_se_golomb(&sl->gb) * 2;
+            sl->slice_alpha_c0_offset = get_se_golomb(&sl->bc) * 2;
+            sl->slice_beta_offset     = get_se_golomb(&sl->bc) * 2;
             if (sl->slice_alpha_c0_offset >  12 ||
                 sl->slice_alpha_c0_offset < -12 ||
                 sl->slice_beta_offset >  12     ||
@@ -1940,12 +1942,12 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
 
     if (h->ps.pps->cabac) {
         /* realign */
-        align_get_bits(&sl->gb);
+        bitstream_align(&sl->bc);
 
         /* init cabac */
         ff_init_cabac_decoder(&sl->cabac,
-                              sl->gb.buffer + get_bits_count(&sl->gb) / 8,
-                              (get_bits_left(&sl->gb) + 7) / 8);
+                              sl->bc.buffer + bitstream_tell(&sl->bc) / 8,
+                              (bitstream_bits_left(&sl->bc) + 7) / 8);
 
         ff_h264_init_cabac_states(h, sl);
 
@@ -2009,7 +2011,7 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
 
             if (eos || sl->mb_y >= h->mb_height) {
                 ff_tlog(h->avctx, "slice end %d %d\n",
-                        get_bits_count(&sl->gb), sl->gb.size_in_bits);
+                        bitstream_tell(&sl->bc), sl->bc.size_in_bits);
                 er_add_slice(sl, sl->resync_mb_x, sl->resync_mb_y, sl->mb_x - 1,
                              sl->mb_y, ER_MB_END);
                 if (sl->mb_x > lf_x_start)
@@ -2062,9 +2064,9 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
                 }
                 if (sl->mb_y >= h->mb_height) {
                     ff_tlog(h->avctx, "slice end %d %d\n",
-                            get_bits_count(&sl->gb), sl->gb.size_in_bits);
+                            bitstream_tell(&sl->bc), sl->bc.size_in_bits);
 
-                    if (get_bits_left(&sl->gb) == 0) {
+                    if (bitstream_bits_left(&sl->bc) == 0) {
                         er_add_slice(sl, sl->resync_mb_x, sl->resync_mb_y,
                                      sl->mb_x - 1, sl->mb_y, ER_MB_END);
 
@@ -2078,11 +2080,11 @@ static int decode_slice(struct AVCodecContext *avctx, void *arg)
                 }
             }
 
-            if (get_bits_left(&sl->gb) <= 0 && sl->mb_skip_run <= 0) {
+            if (bitstream_bits_left(&sl->bc) <= 0 && sl->mb_skip_run <= 0) {
                 ff_tlog(h->avctx, "slice end %d %d\n",
-                        get_bits_count(&sl->gb), sl->gb.size_in_bits);
+                        bitstream_tell(&sl->bc), sl->bc.size_in_bits);
 
-                if (get_bits_left(&sl->gb) == 0) {
+                if (bitstream_bits_left(&sl->bc) == 0) {
                     er_add_slice(sl, sl->resync_mb_x, sl->resync_mb_y,
                                  sl->mb_x - 1, sl->mb_y, ER_MB_END);
                     if (sl->mb_x > lf_x_start)

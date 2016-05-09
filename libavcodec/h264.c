@@ -31,6 +31,7 @@
 #include "libavutil/stereo3d.h"
 #include "libavutil/timer.h"
 #include "internal.h"
+#include "bitstream.h"
 #include "bytestream.h"
 #include "cabac.h"
 #include "cabac_functions.h"
@@ -777,7 +778,7 @@ static int get_last_needed_nal(H264Context *h)
 
     for (i = 0; i < h->pkt.nb_nals; i++) {
         H2645NAL *nal = &h->pkt.nals[i];
-        GetBitContext gb;
+        BitstreamContext bc;
 
         /* packets can sometimes contain multiple PPS/SPS,
          * e.g. two PAFF field pictures in one packet, or a demuxer
@@ -791,8 +792,8 @@ static int get_last_needed_nal(H264Context *h)
         case NAL_DPA:
         case NAL_IDR_SLICE:
         case NAL_SLICE:
-            init_get_bits(&gb, nal->data + 1, (nal->size - 1) * 8);
-            if (!get_ue_golomb(&gb))
+            bitstream_init8(&bc, nal->data + 1, (nal->size - 1));
+            if (!get_ue_golomb(&bc))
                 nals_needed = i;
         }
     }
@@ -849,7 +850,7 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
             }
             idr(h); // FIXME ensure we don't lose some frames if there is reordering
         case NAL_SLICE:
-            sl->gb = nal->gb;
+            sl->bc = nal->bc;
 
             if ((err = ff_h264_decode_slice_header(h, sl)))
                 break;
@@ -904,17 +905,17 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
             goto end;
             break;
         case NAL_SEI:
-            ret = ff_h264_sei_decode(&h->sei, &nal->gb, &h->ps, avctx);
+            ret = ff_h264_sei_decode(&h->sei, &nal->bc, &h->ps, avctx);
             if (ret < 0 && (h->avctx->err_recognition & AV_EF_EXPLODE))
                 goto end;
             break;
         case NAL_SPS:
-            ret = ff_h264_decode_seq_parameter_set(&nal->gb, avctx, &h->ps);
+            ret = ff_h264_decode_seq_parameter_set(&nal->bc, avctx, &h->ps);
             if (ret < 0 && (h->avctx->err_recognition & AV_EF_EXPLODE))
                 goto end;
             break;
         case NAL_PPS:
-            ret = ff_h264_decode_picture_parameter_set(&nal->gb, avctx, &h->ps,
+            ret = ff_h264_decode_picture_parameter_set(&nal->bc, avctx, &h->ps,
                                                        nal->size_bits);
             if (ret < 0 && (h->avctx->err_recognition & AV_EF_EXPLODE))
                 goto end;

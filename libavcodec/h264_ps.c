@@ -28,6 +28,8 @@
 #include <inttypes.h>
 
 #include "libavutil/imgutils.h"
+
+#include "bitstream.h"
 #include "internal.h"
 #include "mathops.h"
 #include "avcodec.h"
@@ -126,45 +128,45 @@ static void remove_sps(H264ParamSets *s, int id)
     av_buffer_unref(&s->sps_list[id]);
 }
 
-static inline int decode_hrd_parameters(GetBitContext *gb, AVCodecContext *avctx,
+static inline int decode_hrd_parameters(BitstreamContext *bc, AVCodecContext *avctx,
                                         SPS *sps)
 {
     int cpb_count, i;
-    cpb_count = get_ue_golomb_31(gb) + 1;
+    cpb_count = get_ue_golomb_31(bc) + 1;
 
     if (cpb_count > 32U) {
         av_log(avctx, AV_LOG_ERROR, "cpb_count %d invalid\n", cpb_count);
         return AVERROR_INVALIDDATA;
     }
 
-    get_bits(gb, 4); /* bit_rate_scale */
-    get_bits(gb, 4); /* cpb_size_scale */
+    bitstream_read(bc, 4); /* bit_rate_scale */
+    bitstream_read(bc, 4); /* cpb_size_scale */
     for (i = 0; i < cpb_count; i++) {
-        get_ue_golomb_long(gb); /* bit_rate_value_minus1 */
-        get_ue_golomb_long(gb); /* cpb_size_value_minus1 */
-        get_bits1(gb);          /* cbr_flag */
+        get_ue_golomb_long(bc); /* bit_rate_value_minus1 */
+        get_ue_golomb_long(bc); /* cpb_size_value_minus1 */
+        bitstream_read_bit(bc); /* cbr_flag */
     }
-    sps->initial_cpb_removal_delay_length = get_bits(gb, 5) + 1;
-    sps->cpb_removal_delay_length         = get_bits(gb, 5) + 1;
-    sps->dpb_output_delay_length          = get_bits(gb, 5) + 1;
-    sps->time_offset_length               = get_bits(gb, 5);
+    sps->initial_cpb_removal_delay_length = bitstream_read(bc, 5) + 1;
+    sps->cpb_removal_delay_length         = bitstream_read(bc, 5) + 1;
+    sps->dpb_output_delay_length          = bitstream_read(bc, 5) + 1;
+    sps->time_offset_length               = bitstream_read(bc, 5);
     sps->cpb_cnt                          = cpb_count;
     return 0;
 }
 
-static inline int decode_vui_parameters(GetBitContext *gb, AVCodecContext *avctx,
+static inline int decode_vui_parameters(BitstreamContext *bc, AVCodecContext *avctx,
                                         SPS *sps)
 {
     int aspect_ratio_info_present_flag;
     unsigned int aspect_ratio_idc;
 
-    aspect_ratio_info_present_flag = get_bits1(gb);
+    aspect_ratio_info_present_flag = bitstream_read_bit(bc);
 
     if (aspect_ratio_info_present_flag) {
-        aspect_ratio_idc = get_bits(gb, 8);
+        aspect_ratio_idc = bitstream_read(bc, 8);
         if (aspect_ratio_idc == EXTENDED_SAR) {
-            sps->sar.num = get_bits(gb, 16);
-            sps->sar.den = get_bits(gb, 16);
+            sps->sar.num = bitstream_read(bc, 16);
+            sps->sar.den = bitstream_read(bc, 16);
         } else if (aspect_ratio_idc < FF_ARRAY_ELEMS(pixel_aspect)) {
             sps->sar = pixel_aspect[aspect_ratio_idc];
         } else {
@@ -176,19 +178,19 @@ static inline int decode_vui_parameters(GetBitContext *gb, AVCodecContext *avctx
         sps->sar.den = 0;
     }
 
-    if (get_bits1(gb))      /* overscan_info_present_flag */
-        get_bits1(gb);      /* overscan_appropriate_flag */
+    if (bitstream_read_bit(bc))      /* overscan_info_present_flag */
+        bitstream_read_bit(bc);      /* overscan_appropriate_flag */
 
-    sps->video_signal_type_present_flag = get_bits1(gb);
+    sps->video_signal_type_present_flag = bitstream_read_bit(bc);
     if (sps->video_signal_type_present_flag) {
-        get_bits(gb, 3);                 /* video_format */
-        sps->full_range = get_bits1(gb); /* video_full_range_flag */
+        bitstream_read(bc, 3);                    /* video_format */
+        sps->full_range = bitstream_read_bit(bc); /* video_full_range_flag */
 
-        sps->colour_description_present_flag = get_bits1(gb);
+        sps->colour_description_present_flag = bitstream_read_bit(bc);
         if (sps->colour_description_present_flag) {
-            sps->color_primaries = get_bits(gb, 8); /* colour_primaries */
-            sps->color_trc       = get_bits(gb, 8); /* transfer_characteristics */
-            sps->colorspace      = get_bits(gb, 8); /* matrix_coefficients */
+            sps->color_primaries = bitstream_read(bc, 8); /* colour_primaries */
+            sps->color_trc       = bitstream_read(bc, 8); /* transfer_characteristics */
+            sps->colorspace      = bitstream_read(bc, 8); /* matrix_coefficients */
             if (sps->color_primaries >= AVCOL_PRI_NB)
                 sps->color_primaries = AVCOL_PRI_UNSPECIFIED;
             if (sps->color_trc >= AVCOL_TRC_NB)
@@ -199,49 +201,49 @@ static inline int decode_vui_parameters(GetBitContext *gb, AVCodecContext *avctx
     }
 
     /* chroma_location_info_present_flag */
-    if (get_bits1(gb)) {
+    if (bitstream_read_bit(bc)) {
         /* chroma_sample_location_type_top_field */
-        avctx->chroma_sample_location = get_ue_golomb(gb) + 1;
-        get_ue_golomb(gb);  /* chroma_sample_location_type_bottom_field */
+        avctx->chroma_sample_location = get_ue_golomb(bc) + 1;
+        get_ue_golomb(bc);  /* chroma_sample_location_type_bottom_field */
     }
 
-    sps->timing_info_present_flag = get_bits1(gb);
+    sps->timing_info_present_flag = bitstream_read_bit(bc);
     if (sps->timing_info_present_flag) {
-        sps->num_units_in_tick = get_bits_long(gb, 32);
-        sps->time_scale        = get_bits_long(gb, 32);
+        sps->num_units_in_tick = bitstream_read(bc, 32);
+        sps->time_scale        = bitstream_read(bc, 32);
         if (!sps->num_units_in_tick || !sps->time_scale) {
             av_log(avctx, AV_LOG_ERROR,
                    "time_scale/num_units_in_tick invalid or unsupported (%"PRIu32"/%"PRIu32")\n",
                    sps->time_scale, sps->num_units_in_tick);
             return AVERROR_INVALIDDATA;
         }
-        sps->fixed_frame_rate_flag = get_bits1(gb);
+        sps->fixed_frame_rate_flag = bitstream_read_bit(bc);
     }
 
-    sps->nal_hrd_parameters_present_flag = get_bits1(gb);
+    sps->nal_hrd_parameters_present_flag = bitstream_read_bit(bc);
     if (sps->nal_hrd_parameters_present_flag)
-        if (decode_hrd_parameters(gb, avctx, sps) < 0)
+        if (decode_hrd_parameters(bc, avctx, sps) < 0)
             return AVERROR_INVALIDDATA;
-    sps->vcl_hrd_parameters_present_flag = get_bits1(gb);
+    sps->vcl_hrd_parameters_present_flag = bitstream_read_bit(bc);
     if (sps->vcl_hrd_parameters_present_flag)
-        if (decode_hrd_parameters(gb, avctx, sps) < 0)
+        if (decode_hrd_parameters(bc, avctx, sps) < 0)
             return AVERROR_INVALIDDATA;
     if (sps->nal_hrd_parameters_present_flag ||
         sps->vcl_hrd_parameters_present_flag)
-        get_bits1(gb);     /* low_delay_hrd_flag */
-    sps->pic_struct_present_flag = get_bits1(gb);
+        bitstream_read_bit(bc);     /* low_delay_hrd_flag */
+    sps->pic_struct_present_flag = bitstream_read_bit(bc);
 
-    sps->bitstream_restriction_flag = get_bits1(gb);
+    sps->bitstream_restriction_flag = bitstream_read_bit(bc);
     if (sps->bitstream_restriction_flag) {
-        get_bits1(gb);     /* motion_vectors_over_pic_boundaries_flag */
-        get_ue_golomb(gb); /* max_bytes_per_pic_denom */
-        get_ue_golomb(gb); /* max_bits_per_mb_denom */
-        get_ue_golomb(gb); /* log2_max_mv_length_horizontal */
-        get_ue_golomb(gb); /* log2_max_mv_length_vertical */
-        sps->num_reorder_frames = get_ue_golomb(gb);
-        get_ue_golomb(gb); /*max_dec_frame_buffering*/
+        bitstream_read_bit(bc); /* motion_vectors_over_pic_boundaries_flag */
+        get_ue_golomb(bc);      /* max_bytes_per_pic_denom */
+        get_ue_golomb(bc);      /* max_bits_per_mb_denom */
+        get_ue_golomb(bc);      /* log2_max_mv_length_horizontal */
+        get_ue_golomb(bc);      /* log2_max_mv_length_vertical */
+        sps->num_reorder_frames = get_ue_golomb(bc);
+        get_ue_golomb(bc);      /*max_dec_frame_buffering*/
 
-        if (get_bits_left(gb) < 0) {
+        if (bitstream_bits_left(bc) < 0) {
             sps->num_reorder_frames         = 0;
             sps->bitstream_restriction_flag = 0;
         }
@@ -255,27 +257,27 @@ static inline int decode_vui_parameters(GetBitContext *gb, AVCodecContext *avctx
             return AVERROR_INVALIDDATA;
         }
     }
-    if (get_bits_left(gb) < 0) {
+    if (bitstream_bits_left(bc) < 0) {
         av_log(avctx, AV_LOG_ERROR,
-               "Overread VUI by %d bits\n", -get_bits_left(gb));
+               "Overread VUI by %d bits\n", -bitstream_bits_left(bc));
         return AVERROR_INVALIDDATA;
     }
 
     return 0;
 }
 
-static void decode_scaling_list(GetBitContext *gb, uint8_t *factors, int size,
+static void decode_scaling_list(BitstreamContext *bc, uint8_t *factors, int size,
                                 const uint8_t *jvt_list,
                                 const uint8_t *fallback_list)
 {
     int i, last = 8, next = 8;
     const uint8_t *scan = size == 16 ? ff_zigzag_scan : ff_zigzag_direct;
-    if (!get_bits1(gb)) /* matrix not written, we use the predicted one */
+    if (!bitstream_read_bit(bc)) /* matrix not written, we use the predicted one */
         memcpy(factors, fallback_list, size * sizeof(uint8_t));
     else
         for (i = 0; i < size; i++) {
             if (next)
-                next = (last + get_se_golomb(gb)) & 0xff;
+                next = (last + get_se_golomb(bc)) & 0xff;
             if (!i && !next) { /* matrix not written, we use the preset one */
                 memcpy(factors, jvt_list, size * sizeof(uint8_t));
                 break;
@@ -284,7 +286,7 @@ static void decode_scaling_list(GetBitContext *gb, uint8_t *factors, int size,
         }
 }
 
-static void decode_scaling_matrices(GetBitContext *gb, SPS *sps,
+static void decode_scaling_matrices(BitstreamContext *bc, SPS *sps,
                                     PPS *pps, int is_sps,
                                     uint8_t(*scaling_matrix4)[16],
                                     uint8_t(*scaling_matrix8)[64])
@@ -296,30 +298,30 @@ static void decode_scaling_matrices(GetBitContext *gb, SPS *sps,
         fallback_sps ? sps->scaling_matrix8[0] : default_scaling8[0],
         fallback_sps ? sps->scaling_matrix8[3] : default_scaling8[1]
     };
-    if (get_bits1(gb)) {
+    if (bitstream_read_bit(bc)) {
         sps->scaling_matrix_present |= is_sps;
-        decode_scaling_list(gb, scaling_matrix4[0], 16, default_scaling4[0], fallback[0]);        // Intra, Y
-        decode_scaling_list(gb, scaling_matrix4[1], 16, default_scaling4[0], scaling_matrix4[0]); // Intra, Cr
-        decode_scaling_list(gb, scaling_matrix4[2], 16, default_scaling4[0], scaling_matrix4[1]); // Intra, Cb
-        decode_scaling_list(gb, scaling_matrix4[3], 16, default_scaling4[1], fallback[1]);        // Inter, Y
-        decode_scaling_list(gb, scaling_matrix4[4], 16, default_scaling4[1], scaling_matrix4[3]); // Inter, Cr
-        decode_scaling_list(gb, scaling_matrix4[5], 16, default_scaling4[1], scaling_matrix4[4]); // Inter, Cb
+        decode_scaling_list(bc, scaling_matrix4[0], 16, default_scaling4[0], fallback[0]);        // Intra, Y
+        decode_scaling_list(bc, scaling_matrix4[1], 16, default_scaling4[0], scaling_matrix4[0]); // Intra, Cr
+        decode_scaling_list(bc, scaling_matrix4[2], 16, default_scaling4[0], scaling_matrix4[1]); // Intra, Cb
+        decode_scaling_list(bc, scaling_matrix4[3], 16, default_scaling4[1], fallback[1]);        // Inter, Y
+        decode_scaling_list(bc, scaling_matrix4[4], 16, default_scaling4[1], scaling_matrix4[3]); // Inter, Cr
+        decode_scaling_list(bc, scaling_matrix4[5], 16, default_scaling4[1], scaling_matrix4[4]); // Inter, Cb
         if (is_sps || pps->transform_8x8_mode) {
-            decode_scaling_list(gb, scaling_matrix8[0], 64, default_scaling8[0], fallback[2]); // Intra, Y
+            decode_scaling_list(bc, scaling_matrix8[0], 64, default_scaling8[0], fallback[2]); // Intra, Y
             if (sps->chroma_format_idc == 3) {
-                decode_scaling_list(gb, scaling_matrix8[1], 64, default_scaling8[0], scaling_matrix8[0]); // Intra, Cr
-                decode_scaling_list(gb, scaling_matrix8[2], 64, default_scaling8[0], scaling_matrix8[1]); // Intra, Cb
+                decode_scaling_list(bc, scaling_matrix8[1], 64, default_scaling8[0], scaling_matrix8[0]); // Intra, Cr
+                decode_scaling_list(bc, scaling_matrix8[2], 64, default_scaling8[0], scaling_matrix8[1]); // Intra, Cb
             }
-            decode_scaling_list(gb, scaling_matrix8[3], 64, default_scaling8[1], fallback[3]); // Inter, Y
+            decode_scaling_list(bc, scaling_matrix8[3], 64, default_scaling8[1], fallback[3]); // Inter, Y
             if (sps->chroma_format_idc == 3) {
-                decode_scaling_list(gb, scaling_matrix8[4], 64, default_scaling8[1], scaling_matrix8[3]); // Inter, Cr
-                decode_scaling_list(gb, scaling_matrix8[5], 64, default_scaling8[1], scaling_matrix8[4]); // Inter, Cb
+                decode_scaling_list(bc, scaling_matrix8[4], 64, default_scaling8[1], scaling_matrix8[3]); // Inter, Cr
+                decode_scaling_list(bc, scaling_matrix8[5], 64, default_scaling8[1], scaling_matrix8[4]); // Inter, Cb
             }
         }
     }
 }
 
-int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
+int ff_h264_decode_seq_parameter_set(BitstreamContext *bc, AVCodecContext *avctx,
                                      H264ParamSets *ps)
 {
     AVBufferRef *sps_buf;
@@ -328,16 +330,16 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     int i, log2_max_frame_num_minus4;
     SPS *sps;
 
-    profile_idc           = get_bits(gb, 8);
-    constraint_set_flags |= get_bits1(gb) << 0;   // constraint_set0_flag
-    constraint_set_flags |= get_bits1(gb) << 1;   // constraint_set1_flag
-    constraint_set_flags |= get_bits1(gb) << 2;   // constraint_set2_flag
-    constraint_set_flags |= get_bits1(gb) << 3;   // constraint_set3_flag
-    constraint_set_flags |= get_bits1(gb) << 4;   // constraint_set4_flag
-    constraint_set_flags |= get_bits1(gb) << 5;   // constraint_set5_flag
-    skip_bits(gb, 2);                             // reserved_zero_2bits
-    level_idc = get_bits(gb, 8);
-    sps_id    = get_ue_golomb_31(gb);
+    profile_idc           = bitstream_read(bc, 8);
+    constraint_set_flags |= bitstream_read_bit(bc) << 0;   // constraint_set0_flag
+    constraint_set_flags |= bitstream_read_bit(bc) << 1;   // constraint_set1_flag
+    constraint_set_flags |= bitstream_read_bit(bc) << 2;   // constraint_set2_flag
+    constraint_set_flags |= bitstream_read_bit(bc) << 3;   // constraint_set3_flag
+    constraint_set_flags |= bitstream_read_bit(bc) << 4;   // constraint_set4_flag
+    constraint_set_flags |= bitstream_read_bit(bc) << 5;   // constraint_set5_flag
+    bitstream_skip(bc, 2);                                 // reserved_zero_2bits
+    level_idc = bitstream_read(bc, 8);
+    sps_id    = get_ue_golomb_31(bc);
 
     if (sps_id >= MAX_SPS_COUNT) {
         av_log(avctx, AV_LOG_ERROR, "sps_id %u out of range\n", sps_id);
@@ -370,23 +372,23 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         sps->profile_idc == 128 ||  // Multiview High profile (MVC)
         sps->profile_idc == 138 ||  // Multiview Depth High profile (MVCD)
         sps->profile_idc == 144) {  // old High444 profile
-        sps->chroma_format_idc = get_ue_golomb_31(gb);
+        sps->chroma_format_idc = get_ue_golomb_31(bc);
         if (sps->chroma_format_idc > 3) {
             avpriv_request_sample(avctx, "chroma_format_idc %u",
                                   sps->chroma_format_idc);
             goto fail;
         } else if (sps->chroma_format_idc == 3) {
-            sps->residual_color_transform_flag = get_bits1(gb);
+            sps->residual_color_transform_flag = bitstream_read_bit(bc);
         }
-        sps->bit_depth_luma   = get_ue_golomb(gb) + 8;
-        sps->bit_depth_chroma = get_ue_golomb(gb) + 8;
+        sps->bit_depth_luma   = get_ue_golomb(bc) + 8;
+        sps->bit_depth_chroma = get_ue_golomb(bc) + 8;
         if (sps->bit_depth_chroma != sps->bit_depth_luma) {
             avpriv_request_sample(avctx,
                                   "Different chroma and luma bit depth");
             goto fail;
         }
-        sps->transform_bypass = get_bits1(gb);
-        decode_scaling_matrices(gb, sps, NULL, 1,
+        sps->transform_bypass = bitstream_read_bit(bc);
+        decode_scaling_matrices(bc, sps, NULL, 1,
                                 sps->scaling_matrix4, sps->scaling_matrix8);
     } else {
         sps->chroma_format_idc = 1;
@@ -394,7 +396,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         sps->bit_depth_chroma  = 8;
     }
 
-    log2_max_frame_num_minus4 = get_ue_golomb(gb);
+    log2_max_frame_num_minus4 = get_ue_golomb(bc);
     if (log2_max_frame_num_minus4 < MIN_LOG2_MAX_FRAME_NUM - 4 ||
         log2_max_frame_num_minus4 > MAX_LOG2_MAX_FRAME_NUM - 4) {
         av_log(avctx, AV_LOG_ERROR,
@@ -404,15 +406,15 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     }
     sps->log2_max_frame_num = log2_max_frame_num_minus4 + 4;
 
-    sps->poc_type = get_ue_golomb_31(gb);
+    sps->poc_type = get_ue_golomb_31(bc);
 
     if (sps->poc_type == 0) { // FIXME #define
-        sps->log2_max_poc_lsb = get_ue_golomb(gb) + 4;
+        sps->log2_max_poc_lsb = get_ue_golomb(bc) + 4;
     } else if (sps->poc_type == 1) { // FIXME #define
-        sps->delta_pic_order_always_zero_flag = get_bits1(gb);
-        sps->offset_for_non_ref_pic           = get_se_golomb(gb);
-        sps->offset_for_top_to_bottom_field   = get_se_golomb(gb);
-        sps->poc_cycle_length                 = get_ue_golomb(gb);
+        sps->delta_pic_order_always_zero_flag = bitstream_read_bit(bc);
+        sps->offset_for_non_ref_pic           = get_se_golomb(bc);
+        sps->offset_for_top_to_bottom_field   = get_se_golomb(bc);
+        sps->poc_cycle_length                 = get_ue_golomb(bc);
 
         if ((unsigned)sps->poc_cycle_length >=
             FF_ARRAY_ELEMS(sps->offset_for_ref_frame)) {
@@ -422,22 +424,22 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         }
 
         for (i = 0; i < sps->poc_cycle_length; i++)
-            sps->offset_for_ref_frame[i] = get_se_golomb(gb);
+            sps->offset_for_ref_frame[i] = get_se_golomb(bc);
     } else if (sps->poc_type != 2) {
         av_log(avctx, AV_LOG_ERROR, "illegal POC type %d\n", sps->poc_type);
         goto fail;
     }
 
-    sps->ref_frame_count = get_ue_golomb_31(gb);
+    sps->ref_frame_count = get_ue_golomb_31(bc);
     if (sps->ref_frame_count > H264_MAX_PICTURE_COUNT - 2 ||
         sps->ref_frame_count >= 32U) {
         av_log(avctx, AV_LOG_ERROR,
                "too many reference frames %d\n", sps->ref_frame_count);
         goto fail;
     }
-    sps->gaps_in_frame_num_allowed_flag = get_bits1(gb);
-    sps->mb_width                       = get_ue_golomb(gb) + 1;
-    sps->mb_height                      = get_ue_golomb(gb) + 1;
+    sps->gaps_in_frame_num_allowed_flag = bitstream_read_bit(bc);
+    sps->mb_width                       = get_ue_golomb(bc) + 1;
+    sps->mb_height                      = get_ue_golomb(bc) + 1;
     if ((unsigned)sps->mb_width  >= INT_MAX / 16 ||
         (unsigned)sps->mb_height >= INT_MAX / 16 ||
         av_image_check_size(16 * sps->mb_width,
@@ -446,13 +448,13 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         goto fail;
     }
 
-    sps->frame_mbs_only_flag = get_bits1(gb);
+    sps->frame_mbs_only_flag = bitstream_read_bit(bc);
     if (!sps->frame_mbs_only_flag)
-        sps->mb_aff = get_bits1(gb);
+        sps->mb_aff = bitstream_read_bit(bc);
     else
         sps->mb_aff = 0;
 
-    sps->direct_8x8_inference_flag = get_bits1(gb);
+    sps->direct_8x8_inference_flag = bitstream_read_bit(bc);
     if (!sps->frame_mbs_only_flag && !sps->direct_8x8_inference_flag) {
         av_log(avctx, AV_LOG_ERROR,
                "This stream was generated by a broken encoder, invalid 8x8 inference\n");
@@ -464,12 +466,12 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         av_log(avctx, AV_LOG_ERROR,
                "MBAFF support not included; enable it at compile-time.\n");
 #endif
-    sps->crop = get_bits1(gb);
+    sps->crop = bitstream_read_bit(bc);
     if (sps->crop) {
-        unsigned int crop_left   = get_ue_golomb(gb);
-        unsigned int crop_right  = get_ue_golomb(gb);
-        unsigned int crop_top    = get_ue_golomb(gb);
-        unsigned int crop_bottom = get_ue_golomb(gb);
+        unsigned int crop_left   = get_ue_golomb(bc);
+        unsigned int crop_right  = get_ue_golomb(bc);
+        unsigned int crop_top    = get_ue_golomb(bc);
+        unsigned int crop_bottom = get_ue_golomb(bc);
 
         if (avctx->flags2 & AV_CODEC_FLAG2_IGNORE_CROP) {
             av_log(avctx, AV_LOG_DEBUG, "discarding sps cropping, original "
@@ -521,9 +523,9 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         sps->crop        = 0;
     }
 
-    sps->vui_parameters_present_flag = get_bits1(gb);
+    sps->vui_parameters_present_flag = bitstream_read_bit(bc);
     if (sps->vui_parameters_present_flag) {
-        int ret = decode_vui_parameters(gb, avctx, sps);
+        int ret = decode_vui_parameters(bc, avctx, sps);
         if (ret < 0 && avctx->err_recognition & AV_EF_EXPLODE)
             goto fail;
     }
@@ -659,12 +661,12 @@ static void build_qp_table(PPS *pps, int t, int index, const int depth)
             ff_h264_chroma_qp[depth - 8][av_clip(i + index, 0, max_qp)];
 }
 
-int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
+int ff_h264_decode_picture_parameter_set(BitstreamContext *bc, AVCodecContext *avctx,
                                          H264ParamSets *ps, int bit_length)
 {
     AVBufferRef *pps_buf;
     SPS *sps;
-    unsigned int pps_id = get_ue_golomb(gb);
+    unsigned int pps_id = get_ue_golomb(bc);
     PPS *pps;
     int qp_bd_offset;
     int bits_left;
@@ -680,7 +682,7 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         return AVERROR(ENOMEM);
     pps = (PPS*)pps_buf->data;
 
-    pps->sps_id = get_ue_golomb_31(gb);
+    pps->sps_id = get_ue_golomb_31(bc);
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||
         !ps->sps_list[pps->sps_id]) {
         av_log(avctx, AV_LOG_ERROR, "sps_id %u out of range\n", pps->sps_id);
@@ -697,11 +699,11 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         goto fail;
     }
 
-    pps->cabac             = get_bits1(gb);
-    pps->pic_order_present = get_bits1(gb);
-    pps->slice_group_count = get_ue_golomb(gb) + 1;
+    pps->cabac             = bitstream_read_bit(bc);
+    pps->pic_order_present = bitstream_read_bit(bc);
+    pps->slice_group_count = get_ue_golomb(bc) + 1;
     if (pps->slice_group_count > 1) {
-        pps->mb_slice_group_map_type = get_ue_golomb(gb);
+        pps->mb_slice_group_map_type = get_ue_golomb(bc);
         av_log(avctx, AV_LOG_ERROR, "FMO not supported\n");
         switch (pps->mb_slice_group_map_type) {
         case 0:
@@ -735,8 +737,8 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
             break;
         }
     }
-    pps->ref_count[0] = get_ue_golomb(gb) + 1;
-    pps->ref_count[1] = get_ue_golomb(gb) + 1;
+    pps->ref_count[0] = get_ue_golomb(bc) + 1;
+    pps->ref_count[1] = get_ue_golomb(bc) + 1;
     if (pps->ref_count[0] - 1 > 32 - 1 || pps->ref_count[1] - 1 > 32 - 1) {
         av_log(avctx, AV_LOG_ERROR, "reference overflow (pps)\n");
         ret = AVERROR_INVALIDDATA;
@@ -745,14 +747,14 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
 
     qp_bd_offset = 6 * (sps->bit_depth_luma - 8);
 
-    pps->weighted_pred                        = get_bits1(gb);
-    pps->weighted_bipred_idc                  = get_bits(gb, 2);
-    pps->init_qp                              = get_se_golomb(gb) + 26 + qp_bd_offset;
-    pps->init_qs                              = get_se_golomb(gb) + 26 + qp_bd_offset;
-    pps->chroma_qp_index_offset[0]            = get_se_golomb(gb);
-    pps->deblocking_filter_parameters_present = get_bits1(gb);
-    pps->constrained_intra_pred               = get_bits1(gb);
-    pps->redundant_pic_cnt_present            = get_bits1(gb);
+    pps->weighted_pred                        = bitstream_read_bit(bc);
+    pps->weighted_bipred_idc                  = bitstream_read(bc, 2);
+    pps->init_qp                              = get_se_golomb(bc) + 26 + qp_bd_offset;
+    pps->init_qs                              = get_se_golomb(bc) + 26 + qp_bd_offset;
+    pps->chroma_qp_index_offset[0]            = get_se_golomb(bc);
+    pps->deblocking_filter_parameters_present = bitstream_read_bit(bc);
+    pps->constrained_intra_pred               = bitstream_read_bit(bc);
+    pps->redundant_pic_cnt_present            = bitstream_read_bit(bc);
 
     pps->transform_8x8_mode = 0;
     memcpy(pps->scaling_matrix4, sps->scaling_matrix4,
@@ -760,14 +762,14 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
     memcpy(pps->scaling_matrix8, sps->scaling_matrix8,
            sizeof(pps->scaling_matrix8));
 
-    bits_left = bit_length - get_bits_count(gb);
+    bits_left = bit_length - bitstream_tell(bc);
     if (bits_left && (bits_left > 8 ||
-                      show_bits(gb, bits_left) != 1 << (bits_left - 1))) {
-        pps->transform_8x8_mode = get_bits1(gb);
-        decode_scaling_matrices(gb, sps, pps, 0,
+                      bitstream_peek(bc, bits_left) != 1 << (bits_left - 1))) {
+        pps->transform_8x8_mode = bitstream_read_bit(bc);
+        decode_scaling_matrices(bc, sps, pps, 0,
                                 pps->scaling_matrix4, pps->scaling_matrix8);
         // second_chroma_qp_index_offset
-        pps->chroma_qp_index_offset[1] = get_se_golomb(gb);
+        pps->chroma_qp_index_offset[1] = get_se_golomb(bc);
     } else {
         pps->chroma_qp_index_offset[1] = pps->chroma_qp_index_offset[0];
     }

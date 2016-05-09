@@ -99,14 +99,14 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
         if (PIXEL_SHIFT) {
             const int bit_depth = h->ps.sps->bit_depth_luma;
             int j;
-            GetBitContext gb;
-            init_get_bits(&gb, sl->intra_pcm_ptr,
+            BitstreamContext bc;
+            bitstream_init(&bc, sl->intra_pcm_ptr,
                           ff_h264_mb_sizes[h->ps.sps->chroma_format_idc] * bit_depth);
 
             for (i = 0; i < 16; i++) {
                 uint16_t *tmp_y = (uint16_t *)(dest_y + i * linesize);
                 for (j = 0; j < 16; j++)
-                    tmp_y[j] = get_bits(&gb, bit_depth);
+                    tmp_y[j] = bitstream_read(&bc, bit_depth);
             }
             if (SIMPLE || !CONFIG_GRAY || !(h->flags & AV_CODEC_FLAG_GRAY)) {
                 if (!h->ps.sps->chroma_format_idc) {
@@ -124,12 +124,12 @@ static av_noinline void FUNC(hl_decode_mb)(const H264Context *h, H264SliceContex
                     for (i = 0; i < block_h; i++) {
                         uint16_t *tmp_cb = (uint16_t *)(dest_cb + i * uvlinesize);
                         for (j = 0; j < 8; j++)
-                            tmp_cb[j] = get_bits(&gb, bit_depth);
+                            tmp_cb[j] = bitstream_read(&bc, bit_depth);
                     }
                     for (i = 0; i < block_h; i++) {
                         uint16_t *tmp_cr = (uint16_t *)(dest_cr + i * uvlinesize);
                         for (j = 0; j < 8; j++)
-                            tmp_cr[j] = get_bits(&gb, bit_depth);
+                            tmp_cr[j] = bitstream_read(&bc, bit_depth);
                     }
                 }
             }
@@ -309,14 +309,14 @@ static av_noinline void FUNC(hl_decode_mb_444)(const H264Context *h, H264SliceCo
     if (!SIMPLE && IS_INTRA_PCM(mb_type)) {
         if (PIXEL_SHIFT) {
             const int bit_depth = h->ps.sps->bit_depth_luma;
-            GetBitContext gb;
-            init_get_bits(&gb, sl->intra_pcm_ptr, 768 * bit_depth);
+            BitstreamContext bc;
+            bitstream_init(&bc, sl->intra_pcm_ptr, 768 * bit_depth);
 
             for (p = 0; p < plane_count; p++)
                 for (i = 0; i < 16; i++) {
                     uint16_t *tmp = (uint16_t *)(dest[p] + i * linesize);
                     for (j = 0; j < 16; j++)
-                        tmp[j] = get_bits(&gb, bit_depth);
+                        tmp[j] = bitstream_read(&bc, bit_depth);
                 }
         } else {
             for (p = 0; p < plane_count; p++)

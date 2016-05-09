@@ -30,6 +30,8 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/timer.h"
+
+#include "bitstream.h"
 #include "config.h"
 #include "cabac.h"
 #include "cabac_functions.h"

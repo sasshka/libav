@@ -34,7 +34,7 @@
 #include "libavutil/mem.h"
 #include "libavutil/pixfmt.h"
 
-#include "get_bits.h"
+#include "bitstream.h"
 #include "golomb.h"
 #include "h264.h"
 #include "h264_sei.h"
@@ -112,7 +112,7 @@ found:
     return i - (state & 5);
 }
 
-static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
+static int scan_mmco_reset(AVCodecParserContext *s, BitstreamContext *bc,
                            AVCodecContext *avctx)
 {
     H264PredWeightTable pwt;
@@ -122,25 +122,25 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
 
 
     if (p->ps.pps->redundant_pic_cnt_present)
-        get_ue_golomb(gb); // redundant_pic_count
+        get_ue_golomb(bc); // redundant_pic_count
 
     if (slice_type_nos == AV_PICTURE_TYPE_B)
-        get_bits1(gb); // direct_spatial_mv_pred
+        bitstream_read_bit(bc); // direct_spatial_mv_pred
 
-    if (ff_h264_parse_ref_count(&list_count, ref_count, gb, p->ps.pps,
+    if (ff_h264_parse_ref_count(&list_count, ref_count, bc, p->ps.pps,
                                 slice_type_nos, p->picture_structure) < 0)
         return AVERROR_INVALIDDATA;
 
     if (slice_type_nos != AV_PICTURE_TYPE_I) {
         int list;
         for (list = 0; list < list_count; list++) {
-            if (get_bits1(gb)) {
+            if (bitstream_read_bit(bc)) {
                 int index;
                 for (index = 0; ; index++) {
-                    unsigned int reordering_of_pic_nums_idc = get_ue_golomb_31(gb);
+                    unsigned int reordering_of_pic_nums_idc = get_ue_golomb_31(bc);
 
                     if (reordering_of_pic_nums_idc < 3)
-                        get_ue_golomb(gb);
+                        get_ue_golomb(bc);
                     else if (reordering_of_pic_nums_idc > 3) {
                         av_log(avctx, AV_LOG_ERROR,
                                "illegal reordering_of_pic_nums_idc %d\n",
@@ -161,13 +161,13 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
 
     if ((p->ps.pps->weighted_pred && slice_type_nos == AV_PICTURE_TYPE_P) ||
         (p->ps.pps->weighted_bipred_idc == 1 && slice_type_nos == AV_PICTURE_TYPE_B))
-        ff_h264_pred_weight_table(gb, p->ps.sps, ref_count, slice_type_nos,
+        ff_h264_pred_weight_table(bc, p->ps.sps, ref_count, slice_type_nos,
                                   &pwt);
 
-    if (get_bits1(gb)) { // adaptive_ref_pic_marking_mode_flag
+    if (bitstream_read_bit(bc)) { // adaptive_ref_pic_marking_mode_flag
         int i;
         for (i = 0; i < MAX_MMCO_COUNT; i++) {
-            MMCOOpcode opcode = get_ue_golomb_31(gb);
+            MMCOOpcode opcode = get_ue_golomb_31(bc);
             if (opcode > (unsigned) MMCO_LONG) {
                 av_log(avctx, AV_LOG_ERROR,
                        "illegal memory management control operation %d\n",
@@ -180,10 +180,10 @@ static int scan_mmco_reset(AVCodecParserContext *s, GetBitContext *gb,
                 return 1;
 
             if (opcode == MMCO_SHORT2UNUSED || opcode == MMCO_SHORT2LONG)
-                get_ue_golomb(gb);
+                get_ue_golomb(bc);
             if (opcode == MMCO_SHORT2LONG || opcode == MMCO_LONG2UNUSED ||
                 opcode == MMCO_LONG || opcode == MMCO_SET_MAX_LONG)
-                get_ue_golomb_31(gb);
+                get_ue_golomb_31(bc);
         }
     }
 
@@ -252,23 +252,23 @@ static inline int parse_nal_units(AVCodecParserContext *s,
         if (consumed < 0)
             break;
 
-        ret = init_get_bits(&nal.gb, nal.data, nal.size * 8);
+        ret = bitstream_init8(&nal.bc, nal.data, nal.size);
         if (ret < 0)
             goto fail;
-        get_bits1(&nal.gb);
-        nal.ref_idc = get_bits(&nal.gb, 2);
-        nal.type    = get_bits(&nal.gb, 5);
+        bitstream_read_bit(&nal.bc);
+        nal.ref_idc = bitstream_read(&nal.bc, 2);
+        nal.type    = bitstream_read(&nal.bc, 5);
 
         switch (nal.type) {
         case NAL_SPS:
-            ff_h264_decode_seq_parameter_set(&nal.gb, avctx, &p->ps);
+            ff_h264_decode_seq_parameter_set(&nal.bc, avctx, &p->ps);
             break;
         case NAL_PPS:
-            ff_h264_decode_picture_parameter_set(&nal.gb, avctx, &p->ps,
+            ff_h264_decode_picture_parameter_set(&nal.bc, avctx, &p->ps,
                                                  nal.size_bits);
             break;
         case NAL_SEI:
-            ff_h264_sei_decode(&p->sei, &nal.gb, &p->ps, avctx);
+            ff_h264_sei_decode(&p->sei, &nal.bc, &p->ps, avctx);
             break;
         case NAL_IDR_SLICE:
             s->key_frame = 1;
@@ -279,14 +279,14 @@ static inline int parse_nal_units(AVCodecParserContext *s,
             p->poc.prev_poc_lsb          = 0;
         /* fall through */
         case NAL_SLICE:
-            get_ue_golomb(&nal.gb);  // skip first_mb_in_slice
-            slice_type   = get_ue_golomb_31(&nal.gb);
+            get_ue_golomb(&nal.bc);  // skip first_mb_in_slice
+            slice_type   = get_ue_golomb_31(&nal.bc);
             s->pict_type = ff_h264_golomb_to_pict_type[slice_type % 5];
             if (p->sei.recovery_point.recovery_frame_cnt >= 0) {
                 /* key frame, since recovery_frame_cnt is set */
                 s->key_frame = 1;
             }
-            pps_id = get_ue_golomb(&nal.gb);
+            pps_id = get_ue_golomb(&nal.bc);
             if (pps_id >= MAX_PPS_COUNT) {
                 av_log(avctx, AV_LOG_ERROR,
                        "pps_id %u out of range\n", pps_id);
@@ -307,7 +307,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
 
             sps = p->ps.sps;
 
-            p->poc.frame_num = get_bits(&nal.gb, sps->log2_max_frame_num);
+            p->poc.frame_num = bitstream_read(&nal.bc, sps->log2_max_frame_num);
 
             s->coded_width  = 16 * sps->mb_width;
             s->coded_height = 16 * sps->mb_height;
@@ -344,30 +344,30 @@ static inline int parse_nal_units(AVCodecParserContext *s,
             if (sps->frame_mbs_only_flag) {
                 p->picture_structure = PICT_FRAME;
             } else {
-                if (get_bits1(&nal.gb)) { // field_pic_flag
-                    p->picture_structure = PICT_TOP_FIELD + get_bits1(&nal.gb); // bottom_field_flag
+                if (bitstream_read_bit(&nal.bc)) { // field_pic_flag
+                    p->picture_structure = PICT_TOP_FIELD + bitstream_read_bit(&nal.bc); // bottom_field_flag
                 } else {
                     p->picture_structure = PICT_FRAME;
                 }
             }
 
             if (nal.type == NAL_IDR_SLICE)
-                get_ue_golomb(&nal.gb); /* idr_pic_id */
+                get_ue_golomb(&nal.bc); /* idr_pic_id */
             if (sps->poc_type == 0) {
-                p->poc.poc_lsb = get_bits(&nal.gb, sps->log2_max_poc_lsb);
+                p->poc.poc_lsb = bitstream_read(&nal.bc, sps->log2_max_poc_lsb);
 
                 if (p->ps.pps->pic_order_present == 1 &&
                     p->picture_structure == PICT_FRAME)
-                    p->poc.delta_poc_bottom = get_se_golomb(&nal.gb);
+                    p->poc.delta_poc_bottom = get_se_golomb(&nal.bc);
             }
 
             if (sps->poc_type == 1 &&
                 !sps->delta_pic_order_always_zero_flag) {
-                p->poc.delta_poc[0] = get_se_golomb(&nal.gb);
+                p->poc.delta_poc[0] = get_se_golomb(&nal.bc);
 
                 if (p->ps.pps->pic_order_present == 1 &&
                     p->picture_structure == PICT_FRAME)
-                    p->poc.delta_poc[1] = get_se_golomb(&nal.gb);
+                    p->poc.delta_poc[1] = get_se_golomb(&nal.bc);
             }
 
             /* Decode POC of this picture.
@@ -381,7 +381,7 @@ static inline int parse_nal_units(AVCodecParserContext *s,
              *        Maybe, we should parse all undisposable non-IDR slice of this
              *        picture until encountering MMCO_RESET in a slice of it. */
             if (nal.ref_idc && nal.type != NAL_IDR_SLICE) {
-                got_reset = scan_mmco_reset(s, &nal.gb, avctx);
+                got_reset = scan_mmco_reset(s, &nal.bc, avctx);
                 if (got_reset < 0)
                     goto fail;
             }

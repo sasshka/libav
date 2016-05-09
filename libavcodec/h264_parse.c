@@ -16,13 +16,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "bitstream.h"
 #include "bytestream.h"
-#include "get_bits.h"
 #include "golomb.h"
 #include "h264.h"
 #include "h264_parse.h"
 
-int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
+int ff_h264_pred_weight_table(BitstreamContext *bc, const SPS *sps,
                               const int *ref_count, int slice_type_nos,
                               H264PredWeightTable *pwt)
 {
@@ -31,9 +31,9 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
 
     pwt->use_weight             = 0;
     pwt->use_weight_chroma      = 0;
-    pwt->luma_log2_weight_denom = get_ue_golomb(gb);
+    pwt->luma_log2_weight_denom = get_ue_golomb(bc);
     if (sps->chroma_format_idc)
-        pwt->chroma_log2_weight_denom = get_ue_golomb(gb);
+        pwt->chroma_log2_weight_denom = get_ue_golomb(bc);
     luma_def   = 1 << pwt->luma_log2_weight_denom;
     chroma_def = 1 << pwt->chroma_log2_weight_denom;
 
@@ -43,10 +43,10 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
         for (i = 0; i < ref_count[list]; i++) {
             int luma_weight_flag, chroma_weight_flag;
 
-            luma_weight_flag = get_bits1(gb);
+            luma_weight_flag = bitstream_read_bit(bc);
             if (luma_weight_flag) {
-                pwt->luma_weight[i][list][0] = get_se_golomb(gb);
-                pwt->luma_weight[i][list][1] = get_se_golomb(gb);
+                pwt->luma_weight[i][list][0] = get_se_golomb(bc);
+                pwt->luma_weight[i][list][1] = get_se_golomb(bc);
                 if (pwt->luma_weight[i][list][0] != luma_def ||
                     pwt->luma_weight[i][list][1] != 0) {
                     pwt->use_weight             = 1;
@@ -58,12 +58,12 @@ int ff_h264_pred_weight_table(GetBitContext *gb, const SPS *sps,
             }
 
             if (sps->chroma_format_idc) {
-                chroma_weight_flag = get_bits1(gb);
+                chroma_weight_flag = bitstream_read_bit(bc);
                 if (chroma_weight_flag) {
                     int j;
                     for (j = 0; j < 2; j++) {
-                        pwt->chroma_weight[i][list][j][0] = get_se_golomb(gb);
-                        pwt->chroma_weight[i][list][j][1] = get_se_golomb(gb);
+                        pwt->chroma_weight[i][list][j][0] = get_se_golomb(bc);
+                        pwt->chroma_weight[i][list][j][1] = get_se_golomb(bc);
                         if (pwt->chroma_weight[i][list][j][0] != chroma_def ||
                             pwt->chroma_weight[i][list][j][1] != 0) {
                             pwt->use_weight_chroma        = 1;
@@ -179,7 +179,7 @@ int ff_h264_check_intra_pred_mode(void *logctx, int top_samples_available,
 }
 
 int ff_h264_parse_ref_count(int *plist_count, int ref_count[2],
-                            GetBitContext *gb, const PPS *pps,
+                            BitstreamContext *bc, const PPS *pps,
                             int slice_type_nos, int picture_structure)
 {
     int list_count;
@@ -190,14 +190,14 @@ int ff_h264_parse_ref_count(int *plist_count, int ref_count[2],
     ref_count[1] = pps->ref_count[1];
 
     if (slice_type_nos != AV_PICTURE_TYPE_I) {
-        num_ref_idx_active_override_flag = get_bits1(gb);
+        num_ref_idx_active_override_flag = bitstream_read_bit(bc);
 
         if (num_ref_idx_active_override_flag) {
-            ref_count[0] = get_ue_golomb(gb) + 1;
+            ref_count[0] = get_ue_golomb(bc) + 1;
             if (ref_count[0] < 1)
                 goto fail;
             if (slice_type_nos == AV_PICTURE_TYPE_B) {
-                ref_count[1] = get_ue_golomb(gb) + 1;
+                ref_count[1] = get_ue_golomb(bc) + 1;
                 if (ref_count[1] < 1)
                     goto fail;
             }
@@ -321,12 +321,12 @@ static int decode_extradata_ps(const uint8_t *data, int size, H264ParamSets *ps,
         H2645NAL *nal = &pkt.nals[i];
         switch (nal->type) {
         case NAL_SPS:
-            ret = ff_h264_decode_seq_parameter_set(&nal->gb, logctx, ps);
+            ret = ff_h264_decode_seq_parameter_set(&nal->bc, logctx, ps);
             if (ret < 0)
                 goto fail;
             break;
         case NAL_PPS:
-            ret = ff_h264_decode_picture_parameter_set(&nal->gb, logctx, ps,
+            ret = ff_h264_decode_picture_parameter_set(&nal->bc, logctx, ps,
                                                        nal->size_bits);
             if (ret < 0)
                 goto fail;

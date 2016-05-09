@@ -27,6 +27,7 @@
 
 #include <inttypes.h>
 
+#include "bitstream.h"
 #include "internal.h"
 #include "avcodec.h"
 #include "h264.h"
@@ -237,11 +238,11 @@ int ff_h264_decode_ref_pic_list_reordering(const H264Context *h, H264SliceContex
     h264_initialise_ref_list(h, sl);
 
     for (list = 0; list < sl->list_count; list++) {
-        if (get_bits1(&sl->gb)) {    // ref_pic_list_modification_flag_l[01]
+        if (bitstream_read_bit(&sl->bc)) {    // ref_pic_list_modification_flag_l[01]
             int pred = h->curr_pic_num;
 
             for (index = 0; ; index++) {
-                unsigned int modification_of_pic_nums_idc = get_ue_golomb_31(&sl->gb);
+                unsigned int modification_of_pic_nums_idc = get_ue_golomb_31(&sl->bc);
                 unsigned int pic_id;
                 int i;
                 H264Picture *ref = NULL;
@@ -257,7 +258,7 @@ int ff_h264_decode_ref_pic_list_reordering(const H264Context *h, H264SliceContex
                 switch (modification_of_pic_nums_idc) {
                 case 0:
                 case 1: {
-                    const unsigned int abs_diff_pic_num = get_ue_golomb(&sl->gb) + 1;
+                    const unsigned int abs_diff_pic_num = get_ue_golomb(&sl->bc) + 1;
                     int frame_num;
 
                     if (abs_diff_pic_num > h->max_pic_num) {
@@ -288,7 +289,7 @@ int ff_h264_decode_ref_pic_list_reordering(const H264Context *h, H264SliceContex
                 }
                 case 2: {
                     int long_idx;
-                    pic_id = get_ue_golomb(&sl->gb); // long_term_pic_idx
+                    pic_id = get_ue_golomb(&sl->bc); // long_term_pic_idx
 
                     long_idx = pic_num_extract(h, pic_id, &pic_structure);
 
@@ -726,7 +727,7 @@ int ff_h264_execute_ref_pic_marking(H264Context *h, MMCO *mmco, int mmco_count)
     return (h->avctx->err_recognition & AV_EF_EXPLODE) ? err : 0;
 }
 
-int ff_h264_decode_ref_pic_marking(H264Context *h, GetBitContext *gb,
+int ff_h264_decode_ref_pic_marking(H264Context *h, BitstreamContext *bc,
                                    int first_slice)
 {
     int i, ret;
@@ -734,21 +735,21 @@ int ff_h264_decode_ref_pic_marking(H264Context *h, GetBitContext *gb,
     int mmco_index = 0;
 
     if (h->nal_unit_type == NAL_IDR_SLICE) { // FIXME fields
-        skip_bits1(gb); // broken_link
-        if (get_bits1(gb)) {
+        bitstream_skip(bc, 1); // broken_link
+        if (bitstream_read_bit(bc)) {
             mmco[0].opcode   = MMCO_LONG;
             mmco[0].long_arg = 0;
             mmco_index       = 1;
         }
     } else {
-        if (get_bits1(gb)) { // adaptive_ref_pic_marking_mode_flag
+        if (bitstream_read_bit(bc)) { // adaptive_ref_pic_marking_mode_flag
             for (i = 0; i < MAX_MMCO_COUNT; i++) {
-                MMCOOpcode opcode = get_ue_golomb_31(gb);
+                MMCOOpcode opcode = get_ue_golomb_31(bc);
 
                 mmco[i].opcode = opcode;
                 if (opcode == MMCO_SHORT2UNUSED || opcode == MMCO_SHORT2LONG) {
                     mmco[i].short_pic_num =
-                        (h->curr_pic_num - get_ue_golomb(gb) - 1) &
+                        (h->curr_pic_num - get_ue_golomb(bc) - 1) &
                             (h->max_pic_num - 1);
 #if 0
                     if (mmco[i].short_pic_num >= h->short_ref_count ||
@@ -762,7 +763,7 @@ int ff_h264_decode_ref_pic_marking(H264Context *h, GetBitContext *gb,
                 }
                 if (opcode == MMCO_SHORT2LONG || opcode == MMCO_LONG2UNUSED ||
                     opcode == MMCO_LONG || opcode == MMCO_SET_MAX_LONG) {
-                    unsigned int long_arg = get_ue_golomb_31(gb);
+                    unsigned int long_arg = get_ue_golomb_31(bc);
                     if (long_arg >= 32 ||
                         (long_arg >= 16 && !(opcode == MMCO_SET_MAX_LONG &&
                                              long_arg == 16) &&
