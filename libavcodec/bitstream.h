@@ -330,16 +330,13 @@ static inline const uint8_t *bitstream_align(BitstreamContext *s)
 /**
  * Return the LUT element for the given bitstream configuration.
  */
-static inline int set_idx(BitstreamContext *s, int code, int *n, int *nb_bits, VLC_TYPE (*table)[2])
-{
-    unsigned int idx;
-
-    *nb_bits = -*n;
-    idx = bitstream_peek(s, *nb_bits) + code;
-    *n = table[idx][1];
-
-    return table[idx][0];
-}
+#define set_idx(s, code, n, nb_bits, table, idx) \
+    do { \
+    *nb_bits = -*n; \
+    idx = bitstream_peek(s, *nb_bits) + code;\
+    *n = table[idx][1]; \
+    code = table[idx][0]; \
+    } while (0)
 
 /**
  * Parse a vlc code.
@@ -362,10 +359,10 @@ static av_always_inline int bitstream_read_vlc(BitstreamContext *s, VLC_TYPE (*t
 
     if (max_depth > 1 && n < 0) {
         bitstream_skip(s, bits);
-        code = set_idx(s, code, &n, &nb_bits, table);
+        set_idx(s, code, &n, &nb_bits, table, idx);
         if (max_depth > 2 && n < 0) {
             bitstream_skip(s, nb_bits);
-            code = set_idx(s, code, &n, &nb_bits, table);
+            set_idx(s, code, &n, &nb_bits, table, idx);
         }
     }
     bitstream_skip(s, n);
