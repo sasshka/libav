@@ -213,51 +213,53 @@ static av_cold int ac3_decode_init(AVCodecContext *avctx)
  */
 static int ac3_parse_header(AC3DecodeContext *s)
 {
-    BitstreamContext *bc = &s->bc;
+    BitstreamContext bc = s->bc;
     int i;
 
     /* read the rest of the bsi. read twice for dual mono mode. */
     i = !s->channel_mode;
     do {
-        bitstream_skip(bc, 5); // skip dialog normalization
-        if (bitstream_read_bit(bc))
-            bitstream_skip(bc, 8); //skip compression
-        if (bitstream_read_bit(bc))
-            bitstream_skip(bc, 8); //skip language code
-        if (bitstream_read_bit(bc))
-            bitstream_skip(bc, 7); //skip audio production information
+        bitstream_skip(&bc, 5); // skip dialog normalization
+        if (bitstream_read_bit(&bc))
+            bitstream_skip(&bc, 8); // skip compression
+        if (bitstream_read_bit(&bc))
+            bitstream_skip(&bc, 8); // skip language code
+        if (bitstream_read_bit(&bc))
+            bitstream_skip(&bc, 7); // skip audio production information
     } while (i--);
 
-    bitstream_skip(bc, 2); //skip copyright bit and original bitstream bit
+    bitstream_skip(&bc, 2); // skip copyright bit and original bitstream bit
 
     /* skip the timecodes or parse the Alternate Bit Stream Syntax */
     if (s->bitstream_id != 6) {
-        if (bitstream_read_bit(bc))
-            bitstream_skip(bc, 14); //skip timecode1
-        if (bitstream_read_bit(bc))
-            bitstream_skip(bc, 14); //skip timecode2
+        if (bitstream_read_bit(&bc))
+            bitstream_skip(&bc, 14); // skip timecode1
+        if (bitstream_read_bit(&bc))
+            bitstream_skip(&bc, 14); // skip timecode2
     } else {
-        if (bitstream_read_bit(bc)) {
-            s->preferred_downmix       = bitstream_read(bc, 2);
-            s->center_mix_level_ltrt   = bitstream_read(bc, 3);
-            s->surround_mix_level_ltrt = av_clip(bitstream_read(bc, 3), 3, 7);
-            s->center_mix_level        = bitstream_read(bc, 3);
-            s->surround_mix_level      = av_clip(bitstream_read(bc, 3), 3, 7);
+        if (bitstream_read_bit(&bc)) {
+            s->preferred_downmix       = bitstream_read(&bc, 2);
+            s->center_mix_level_ltrt   = bitstream_read(&bc, 3);
+            s->surround_mix_level_ltrt = av_clip(bitstream_read(&bc, 3), 3, 7);
+            s->center_mix_level        = bitstream_read(&bc, 3);
+            s->surround_mix_level      = av_clip(bitstream_read(&bc, 3), 3, 7);
         }
-        if (bitstream_read_bit(bc)) {
-            s->dolby_surround_ex_mode = bitstream_read(bc, 2);
-            s->dolby_headphone_mode   = bitstream_read(bc, 2);
-            bitstream_skip(bc, 10); // skip adconvtyp (1), xbsi2 (8), encinfo (1)
+        if (bitstream_read_bit(&bc)) {
+            s->dolby_surround_ex_mode = bitstream_read(&bc, 2);
+            s->dolby_headphone_mode   = bitstream_read(&bc, 2);
+            bitstream_skip(&bc, 10); // skip adconvtyp (1), xbsi2 (8), encinfo (1)
         }
     }
 
     /* skip additional bitstream info */
-    if (bitstream_read_bit(bc)) {
-        i = bitstream_read(bc, 6);
+    if (bitstream_read_bit(&bc)) {
+        i = bitstream_read(&bc, 6);
         do {
-            bitstream_skip(bc, 8);
+            bitstream_skip(&bc, 8);
         } while (i--);
     }
+
+    s->bc = bc;
 
     return 0;
 }
@@ -475,7 +477,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
     int8_t *exps   = s->dexps[ch_index];
     int32_t *coeffs = s->fixed_coeffs[ch_index];
     int dither     = (ch_index == CPL_CH) || s->dither_flag[ch_index];
-    BitstreamContext *bc = &s->bc;
+    BitstreamContext bc = s->bc;
     int freq;
 
     for (freq = start_freq; freq < end_freq; freq++) {
@@ -494,7 +496,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
                 m->b1--;
                 mantissa = m->b1_mant[m->b1];
             } else {
-                int bits      = bitstream_read(bc, 5);
+                int bits      = bitstream_read(&bc, 5);
                 mantissa      = b1_mantissas[bits][0];
                 m->b1_mant[1] = b1_mantissas[bits][1];
                 m->b1_mant[0] = b1_mantissas[bits][2];
@@ -506,7 +508,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
                 m->b2--;
                 mantissa = m->b2_mant[m->b2];
             } else {
-                int bits      = bitstream_read(bc, 7);
+                int bits      = bitstream_read(&bc, 7);
                 mantissa      = b2_mantissas[bits][0];
                 m->b2_mant[1] = b2_mantissas[bits][1];
                 m->b2_mant[0] = b2_mantissas[bits][2];
@@ -514,30 +516,32 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
             }
             break;
         case 3:
-            mantissa = b3_mantissas[bitstream_read(bc, 3)];
+            mantissa = b3_mantissas[bitstream_read(&bc, 3)];
             break;
         case 4:
             if (m->b4) {
                 m->b4 = 0;
                 mantissa = m->b4_mant;
             } else {
-                int bits   = bitstream_read(bc, 7);
+                int bits   = bitstream_read(&bc, 7);
                 mantissa   = b4_mantissas[bits][0];
                 m->b4_mant = b4_mantissas[bits][1];
                 m->b4      = 1;
             }
             break;
         case 5:
-            mantissa = b5_mantissas[bitstream_read(bc, 4)];
+            mantissa = b5_mantissas[bitstream_read(&bc, 4)];
             break;
         default: /* 6 to 15 */
             /* Shift mantissa and sign-extend it. */
-            mantissa = bitstream_read_signed(bc, quantization_tab[bap]);
+            mantissa = bitstream_read_signed(&bc, quantization_tab[bap]);
             mantissa <<= 24 - quantization_tab[bap];
             break;
         }
         coeffs[freq] = mantissa >> exps[freq];
     }
+
+    s->bc = bc;
 }
 
 /**
