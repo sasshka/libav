@@ -70,6 +70,15 @@ static inline void refill_32(BitstreamContext *bc)
     bc->bits_left += 32;
 }
 
+/* Make sure that the cache contains at least n bits */
+static inline void bitstream_prefetch(BitstreamContext *bc, unsigned n)
+{
+    refill_32(bc);
+
+    if (bc->bits_left < n)
+        refill_32(bc);
+}
+
 /* Initialize BitstreamContext. Input buffer must have an additional zero
  * padding of AV_INPUT_BUFFER_PADDING_SIZE bytes at the end. */
 static inline int bitstream_init(BitstreamContext *bc, const uint8_t *buffer,
@@ -138,6 +147,12 @@ static inline uint64_t get_val(BitstreamContext *bc, unsigned n)
     bc->bits_left -= n;
 
     return ret;
+}
+
+/* Return n bits from the cache. n has to be in the 1-32 range. */
+static inline unsigned bitstream_read_cache(BitstreamContext *bc, unsigned n)
+{
+    return get_val(bc, n);
 }
 
 /* Return one bit from the buffer. */
