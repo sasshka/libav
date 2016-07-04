@@ -219,34 +219,36 @@ static int ac3_parse_header(AC3DecodeContext *s)
     /* read the rest of the bsi. read twice for dual mono mode. */
     i = !s->channel_mode;
     do {
+        bitstream_prefetch(&bc, 32);
         bitstream_skip(&bc, 5); // skip dialog normalization
-        if (bitstream_read_bit(&bc))
+        if (bitstream_read_cache(&bc, 1))
             bitstream_skip(&bc, 8); // skip compression
-        if (bitstream_read_bit(&bc))
+        if (bitstream_read_cache(&bc, 1))
             bitstream_skip(&bc, 8); // skip language code
-        if (bitstream_read_bit(&bc))
+        if (bitstream_read_cache(&bc, 1))
             bitstream_skip(&bc, 7); // skip audio production information
     } while (i--);
 
     bitstream_skip(&bc, 2); // skip copyright bit and original bitstream bit
 
     /* skip the timecodes or parse the Alternate Bit Stream Syntax */
+    bitstream_prefetch(&bc, 32);
     if (s->bitstream_id != 6) {
-        if (bitstream_read_bit(&bc))
+        if (bitstream_read_cache(&bc, 1))
             bitstream_skip(&bc, 14); // skip timecode1
-        if (bitstream_read_bit(&bc))
+        if (bitstream_read_cache(&bc, 1))
             bitstream_skip(&bc, 14); // skip timecode2
     } else {
-        if (bitstream_read_bit(&bc)) {
-            s->preferred_downmix       = bitstream_read(&bc, 2);
-            s->center_mix_level_ltrt   = bitstream_read(&bc, 3);
-            s->surround_mix_level_ltrt = av_clip(bitstream_read(&bc, 3), 3, 7);
-            s->center_mix_level        = bitstream_read(&bc, 3);
-            s->surround_mix_level      = av_clip(bitstream_read(&bc, 3), 3, 7);
+        if (bitstream_read_cache(&bc, 1)) {
+            s->preferred_downmix       = bitstream_read_cache(&bc, 2);
+            s->center_mix_level_ltrt   = bitstream_read_cache(&bc, 3);
+            s->surround_mix_level_ltrt = av_clip(bitstream_read_cache(&bc, 3), 3, 7);
+            s->center_mix_level        = bitstream_read_cache(&bc, 3);
+            s->surround_mix_level      = av_clip(bitstream_read_cache(&bc, 3), 3, 7);
         }
         if (bitstream_read_bit(&bc)) {
-            s->dolby_surround_ex_mode = bitstream_read(&bc, 2);
-            s->dolby_headphone_mode   = bitstream_read(&bc, 2);
+            s->dolby_surround_ex_mode = bitstream_read_cache(&bc, 2);
+            s->dolby_headphone_mode   = bitstream_read_cache(&bc, 2);
             bitstream_skip(&bc, 10); // skip adconvtyp (1), xbsi2 (8), encinfo (1)
         }
     }

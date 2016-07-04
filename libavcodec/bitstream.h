@@ -70,11 +70,9 @@ static inline void refill_32(BitstreamContext *bc)
     bc->bits_left += 32;
 }
 
-/* Make sure that the cache contains at least n bits */
+/* Make sure that the cache contains at least n bits, n has to be in the 0-32 range */
 static inline void bitstream_prefetch(BitstreamContext *bc, unsigned n)
 {
-    refill_32(bc);
-
     if (bc->bits_left < n)
         refill_32(bc);
 }
