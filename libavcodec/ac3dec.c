@@ -725,10 +725,12 @@ static void decode_band_structure(BitstreamContext *bc, int blk, int eac3,
 
     n_subbands = end_subband - start_subband;
 
+
+    bitstream_prefetch(bc, 23);
     /* decode band structure from bitstream or use default */
-    if (!eac3 || bitstream_read_bit(bc)) {
+    if (!eac3 || bitstream_read_cache(bc, 1)) {
         for (subbnd = 0; subbnd < n_subbands - 1; subbnd++) {
-            coded_band_struct[subbnd] = bitstream_read_bit(bc);
+            coded_band_struct[subbnd] = bitstream_read_cache(bc, 1);
         }
         band_struct = coded_band_struct;
     } else if (!blk) {
@@ -769,21 +771,23 @@ static inline int spx_strategy(AC3DecodeContext *s, int blk)
     int dst_start_freq, dst_end_freq, src_start_freq,
         start_subband, end_subband, ch;
 
+    bitstream_prefetch(bc, 15);
+
     /* determine which channels use spx */
     if (s->channel_mode == AC3_CHMODE_MONO) {
         s->channel_uses_spx[1] = 1;
     } else {
         for (ch = 1; ch <= fbw_channels; ch++)
-            s->channel_uses_spx[ch] = bitstream_read_bit(bc);
+            s->channel_uses_spx[ch] = bitstream_read_cache(bc, 1);
     }
 
     /* get the frequency bins of the spx copy region and the spx start
        and end subbands */
-    dst_start_freq = bitstream_read(bc, 2);
-    start_subband  = bitstream_read(bc, 3) + 2;
+    dst_start_freq = bitstream_read_cache(bc, 2);
+    start_subband  = bitstream_read_cache(bc, 3) + 2;
     if (start_subband > 7)
         start_subband += start_subband - 7;
-    end_subband    = bitstream_read(bc, 3) + 5;
+    end_subband    = bitstream_read_cache(bc, 3) + 5;
     if (end_subband   > 7)
         end_subband   += end_subband   - 7;
     dst_start_freq = dst_start_freq * 12 + 25;
@@ -827,15 +831,19 @@ static inline void spx_coordinates(AC3DecodeContext *s)
                 float spx_blend;
                 int bin, master_spx_coord;
 
+                bitstream_prefetch(bc, 7);
+
                 s->first_spx_coords[ch] = 0;
-                spx_blend        = bitstream_read(bc, 5) * (1.0f / 32);
-                master_spx_coord = bitstream_read(bc, 2) * 3;
+                spx_blend        = bitstream_read_cache(bc, 5) * (1.0f / 32);
+                master_spx_coord = bitstream_read_cache(bc, 2) * 3;
 
                 bin = s->spx_src_start_freq;
                 for (bnd = 0; bnd < s->num_spx_bands; bnd++) {
                     int bandsize;
                     int spx_coord_exp, spx_coord_mant;
                     float nratio, sblend, nblend, spx_coord;
+
+                    bitstream_prefetch(bc, 6);
 
                     /* calculate blending factors */
                     bandsize = s->spx_band_sizes[bnd];
@@ -847,8 +855,8 @@ static inline void spx_coordinates(AC3DecodeContext *s)
                     bin += bandsize;
 
                     /* decode spx coordinates */
-                    spx_coord_exp  = bitstream_read(bc, 4);
-                    spx_coord_mant = bitstream_read(bc, 2);
+                    spx_coord_exp  = bitstream_read_cache(bc, 4);
+                    spx_coord_mant = bitstream_read_cache(bc, 2);
                     if (spx_coord_exp == 15) spx_coord_mant <<= 1;
                     else                     spx_coord_mant += 4;
                     spx_coord_mant <<= (25 - spx_coord_exp - master_spx_coord);
@@ -873,9 +881,11 @@ static inline int coupling_strategy(AC3DecodeContext *s, int blk,
     int channel_mode = s->channel_mode;
     int ch;
 
+    bitstream_prefetch(bc, 14);
+
     memset(bit_alloc_stages, 3, AC3_MAX_CHANNELS);
     if (!s->eac3)
-        s->cpl_in_use[blk] = bitstream_read_bit(bc);
+        s->cpl_in_use[blk] = bitstream_read_cache(bc, 1);
     if (s->cpl_in_use[blk]) {
         /* coupling in use */
         int cpl_start_subband, cpl_end_subband;
@@ -886,7 +896,7 @@ static inline int coupling_strategy(AC3DecodeContext *s, int blk,
         }
 
         /* check for enhanced coupling */
-        if (s->eac3 && bitstream_read_bit(bc)) {
+        if (s->eac3 && bitstream_read_cache(bc, 1)) {
             /* TODO: parse enhanced coupling strategy info */
             avpriv_request_sample(s->avctx, "Enhanced coupling");
             return AVERROR_PATCHWELCOME;
@@ -903,12 +913,12 @@ static inline int coupling_strategy(AC3DecodeContext *s, int blk,
 
         /* phase flags in use */
         if (channel_mode == AC3_CHMODE_STEREO)
-            s->phase_flags_in_use = bitstream_read_bit(bc);
+            s->phase_flags_in_use = bitstream_read_cache(bc, 1);
 
         /* coupling frequency range */
         cpl_start_subband = bitstream_read(bc, 4);
         cpl_end_subband = s->spx_in_use ? (s->spx_src_start_freq - 37) / 12 :
-                                          bitstream_read(bc, 4) + 3;
+                                          bitstream_read_cache(bc, 4) + 3;
         if (cpl_start_subband >= cpl_end_subband) {
             av_log(s->avctx, AV_LOG_ERROR, "invalid coupling range (%d >= %d)\n",
                    cpl_start_subband, cpl_end_subband);
@@ -949,8 +959,9 @@ static inline int coupling_coordinates(AC3DecodeContext *s, int blk)
                 cpl_coords_exist = 1;
                 master_cpl_coord = 3 * bitstream_read(bc, 2);
                 for (bnd = 0; bnd < s->num_cpl_bands; bnd++) {
-                    cpl_coord_exp  = bitstream_read(bc, 4);
-                    cpl_coord_mant = bitstream_read(bc, 4);
+                    bitstream_prefetch(bc, 8);
+                    cpl_coord_exp  = bitstream_read_cache(bc, 4);
+                    cpl_coord_mant = bitstream_read_cache(bc, 4);
                     if (cpl_coord_exp == 15)
                         s->cpl_coords[ch][bnd] = cpl_coord_mant << 22;
                     else
@@ -994,8 +1005,9 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
     /* block switch flags */
     different_transforms = 0;
     if (s->block_switch_syntax) {
+        bitstream_prefetch(bc, 7);
         for (ch = 1; ch <= fbw_channels; ch++) {
-            s->block_switch[ch] = bitstream_read_bit(bc);
+            s->block_switch[ch] = bitstream_read_cache(bc, 1);
             if (ch > 1 && s->block_switch[ch] != s->block_switch[1])
                 different_transforms = 1;
         }
@@ -1003,18 +1015,21 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
 
     /* dithering flags */
     if (s->dither_flag_syntax) {
+        bitstream_prefetch(bc, 7);
         for (ch = 1; ch <= fbw_channels; ch++) {
-            s->dither_flag[ch] = bitstream_read_bit(bc);
+            s->dither_flag[ch] = bitstream_read_cache(bc, 1);
         }
     }
+
+    bitstream_prefetch(bc, 20);
 
     /* dynamic range */
     i = !s->channel_mode;
     do {
-        if (bitstream_read_bit(bc)) {
+        if (bitstream_read_cache(bc, 1)) {
             /* Allow asymmetric application of DRC when drc_scale > 1.
                Amplification of quiet sounds is enhanced */
-            float range = dynamic_range_tab[bitstream_read(bc, 8)];
+            float range = dynamic_range_tab[bitstream_read_cache(bc, 8)];
             if (range > 1.0 || s->drc_scale <= 1.0)
                 s->dynamic_range[i] = powf(range, s->drc_scale);
             else
@@ -1025,8 +1040,8 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
     } while (i--);
 
     /* spectral extension strategy */
-    if (s->eac3 && (!blk || bitstream_read_bit(bc))) {
-        s->spx_in_use = bitstream_read_bit(bc);
+    if (s->eac3 && (!blk || bitstream_read_cache(bc, 1))) {
+        s->spx_in_use = bitstream_read_cache(bc, 1);
         if (s->spx_in_use) {
             if ((ret = spx_strategy(s, blk)) < 0)
                 return ret;
@@ -1063,9 +1078,11 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
             return ret;
     }
 
+    bitstream_prefetch(bc, 21);
+
     /* stereo rematrixing strategy and band structure */
     if (channel_mode == AC3_CHMODE_STEREO) {
-        if ((s->eac3 && !blk) || bitstream_read_bit(bc)) {
+        if ((s->eac3 && !blk) || bitstream_read_cache(bc, 1)) {
             s->num_rematrixing_bands = 4;
             if (cpl_in_use && s->start_freq[CPL_CH] <= 61) {
                 s->num_rematrixing_bands -= 1 + (s->start_freq[CPL_CH] == 37);
@@ -1073,7 +1090,7 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
                 s->num_rematrixing_bands--;
             }
             for (bnd = 0; bnd < s->num_rematrixing_bands; bnd++)
-                s->rematrixing_flags[bnd] = bitstream_read_bit(bc);
+                s->rematrixing_flags[bnd] = bitstream_read_cache(bc, 1);
         } else if (!blk) {
             av_log(s->avctx, AV_LOG_WARNING, "Warning: "
                    "new rematrixing strategy not present in block 0\n");
@@ -1084,7 +1101,7 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
     /* exponent strategies for each channel */
     for (ch = !cpl_in_use; ch <= s->channels; ch++) {
         if (!s->eac3)
-            s->exp_strategy[blk][ch] = bitstream_read(bc, 2 - (ch == s->lfe_ch));
+            s->exp_strategy[blk][ch] = bitstream_read_cache(bc, 2 - (ch == s->lfe_ch));
         if (s->exp_strategy[blk][ch] != EXP_REUSE)
             bit_alloc_stages[ch] = 3;
     }
@@ -1135,12 +1152,13 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
 
     /* bit allocation information */
     if (s->bit_allocation_syntax) {
-        if (bitstream_read_bit(bc)) {
-            s->bit_alloc_params.slow_decay = ff_ac3_slow_decay_tab[bitstream_read(bc, 2)] >> s->bit_alloc_params.sr_shift;
-            s->bit_alloc_params.fast_decay = ff_ac3_fast_decay_tab[bitstream_read(bc, 2)] >> s->bit_alloc_params.sr_shift;
-            s->bit_alloc_params.slow_gain  = ff_ac3_slow_gain_tab[bitstream_read(bc, 2)];
-            s->bit_alloc_params.db_per_bit = ff_ac3_db_per_bit_tab[bitstream_read(bc, 2)];
-            s->bit_alloc_params.floor  = ff_ac3_floor_tab[bitstream_read(bc, 3)];
+        bitstream_prefetch(bc, 12);
+        if (bitstream_read_cache(bc, 1)) {
+            s->bit_alloc_params.slow_decay = ff_ac3_slow_decay_tab[bitstream_read_cache(bc, 2)] >> s->bit_alloc_params.sr_shift;
+            s->bit_alloc_params.fast_decay = ff_ac3_fast_decay_tab[bitstream_read_cache(bc, 2)] >> s->bit_alloc_params.sr_shift;
+            s->bit_alloc_params.slow_gain  = ff_ac3_slow_gain_tab[bitstream_read_cache(bc, 2)];
+            s->bit_alloc_params.db_per_bit = ff_ac3_db_per_bit_tab[bitstream_read_cache(bc, 2)];
+            s->bit_alloc_params.floor      = ff_ac3_floor_tab[bitstream_read_cache(bc, 3)];
             for (ch = !cpl_in_use; ch <= s->channels; ch++)
                 bit_alloc_stages[ch] = FFMAX(bit_alloc_stages[ch], 2);
         } else if (!blk) {
@@ -1202,9 +1220,10 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
 
     /* coupling leak information */
     if (cpl_in_use) {
-        if (s->first_cpl_leak || bitstream_read_bit(bc)) {
-            int fl = bitstream_read(bc, 3);
-            int sl = bitstream_read(bc, 3);
+        bitstream_prefetch(bc, 7);
+        if (s->first_cpl_leak || bitstream_read_cache(bc, 1)) {
+            int fl = bitstream_read_cache(bc, 3);
+            int sl = bitstream_read_cache(bc, 3);
             /* run last 2 bit allocation stages for coupling channel if
                coupling leak changes */
             if (blk && (fl != s->bit_alloc_params.cpl_fast_leak ||
@@ -1224,8 +1243,9 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
     /* delta bit allocation information */
     if (s->dba_syntax && bitstream_read_bit(bc)) {
         /* delta bit allocation exists (strategy) */
+        bitstream_prefetch(bc, 14);
         for (ch = !cpl_in_use; ch <= fbw_channels; ch++) {
-            s->dba_mode[ch] = bitstream_read(bc, 2);
+            s->dba_mode[ch] = bitstream_read_cache(bc, 2);
             if (s->dba_mode[ch] == DBA_RESERVED) {
                 av_log(s->avctx, AV_LOG_ERROR, "delta bit allocation strategy reserved\n");
                 return AVERROR_INVALIDDATA;
@@ -1233,13 +1253,15 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
             bit_alloc_stages[ch] = FFMAX(bit_alloc_stages[ch], 2);
         }
         /* channel delta offset, len and bit allocation */
+        bitstream_prefetch(bc, 15);
         for (ch = !cpl_in_use; ch <= fbw_channels; ch++) {
             if (s->dba_mode[ch] == DBA_NEW) {
-                s->dba_nsegs[ch] = bitstream_read(bc, 3) + 1;
+                s->dba_nsegs[ch] = bitstream_read_cache(bc, 3) + 1;
                 for (seg = 0; seg < s->dba_nsegs[ch]; seg++) {
-                    s->dba_offsets[ch][seg] = bitstream_read(bc, 5);
-                    s->dba_lengths[ch][seg] = bitstream_read(bc, 4);
-                    s->dba_values[ch][seg]  = bitstream_read(bc, 3);
+                    bitstream_prefetch(bc, 15);
+                    s->dba_offsets[ch][seg] = bitstream_read_cache(bc, 5);
+                    s->dba_lengths[ch][seg] = bitstream_read_cache(bc, 4);
+                    s->dba_values[ch][seg]  = bitstream_read_cache(bc, 3);
                 }
                 /* run last 2 bit allocation stages if new dba values */
                 bit_alloc_stages[ch] = FFMAX(bit_alloc_stages[ch], 2);
