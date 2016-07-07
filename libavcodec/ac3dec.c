@@ -485,6 +485,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
     for (freq = start_freq; freq < end_freq; freq++) {
         int bap = baps[freq];
         int mantissa;
+        bitstream_prefetch(&bc, 7);
         switch (bap) {
         case 0:
             /* random noise with approximate range of -0.707 to 0.707 */
@@ -498,7 +499,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
                 m->b1--;
                 mantissa = m->b1_mant[m->b1];
             } else {
-                int bits      = bitstream_read(&bc, 5);
+                int bits      = bitstream_read_cache(&bc, 5);
                 mantissa      = b1_mantissas[bits][0];
                 m->b1_mant[1] = b1_mantissas[bits][1];
                 m->b1_mant[0] = b1_mantissas[bits][2];
@@ -510,7 +511,7 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
                 m->b2--;
                 mantissa = m->b2_mant[m->b2];
             } else {
-                int bits      = bitstream_read(&bc, 7);
+                int bits      = bitstream_read_cache(&bc, 7);
                 mantissa      = b2_mantissas[bits][0];
                 m->b2_mant[1] = b2_mantissas[bits][1];
                 m->b2_mant[0] = b2_mantissas[bits][2];
@@ -518,21 +519,21 @@ static void ac3_decode_transform_coeffs_ch(AC3DecodeContext *s, int ch_index, ma
             }
             break;
         case 3:
-            mantissa = b3_mantissas[bitstream_read(&bc, 3)];
+            mantissa = b3_mantissas[bitstream_read_cache(&bc, 3)];
             break;
         case 4:
             if (m->b4) {
                 m->b4 = 0;
                 mantissa = m->b4_mant;
             } else {
-                int bits   = bitstream_read(&bc, 7);
+                int bits   = bitstream_read_cache(&bc, 7);
                 mantissa   = b4_mantissas[bits][0];
                 m->b4_mant = b4_mantissas[bits][1];
                 m->b4      = 1;
             }
             break;
         case 5:
-            mantissa = b5_mantissas[bitstream_read(&bc, 4)];
+            mantissa = b5_mantissas[bitstream_read_cache(&bc, 4)];
             break;
         default: /* 6 to 15 */
             /* Shift mantissa and sign-extend it. */
