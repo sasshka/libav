@@ -77,29 +77,31 @@ int ff_ac3_parse_header(BitstreamContext *bcp, AC3HeaderInfo *hdr)
 
     if(hdr->bitstream_id <= 10) {
         /* Normal AC-3 */
-        hdr->crc1    = bitstream_read(&bc, 16);
-        hdr->sr_code = bitstream_read(&bc,  2);
+        // bitsream_prefetch(&bc, 29); 29 bits already present due _peek
+        hdr->crc1    = bitstream_read_cache(&bc, 16);
+        hdr->sr_code = bitstream_read_cache(&bc,  2);
         if(hdr->sr_code == 3)
             return AAC_AC3_PARSE_ERROR_SAMPLE_RATE;
 
-        frame_size_code = bitstream_read(&bc, 6);
+        frame_size_code = bitstream_read_cache(&bc, 6);
         if(frame_size_code > 37)
             return AAC_AC3_PARSE_ERROR_FRAME_SIZE;
 
         bitstream_skip(&bc, 5); // skip bsid, already got it
 
-        hdr->bitstream_mode = bitstream_read(&bc, 3);
-        hdr->channel_mode   = bitstream_read(&bc, 3);
+        bitstream_prefetch(&bc, 11);
+        hdr->bitstream_mode = bitstream_read_cache(&bc, 3);
+        hdr->channel_mode   = bitstream_read_cache(&bc, 3);
 
         if(hdr->channel_mode == AC3_CHMODE_STEREO) {
-            hdr->dolby_surround_mode = bitstream_read(&bc, 2);
+            hdr->dolby_surround_mode = bitstream_read_cache(&bc, 2);
         } else {
             if((hdr->channel_mode & 1) && hdr->channel_mode != AC3_CHMODE_MONO)
-                hdr->center_mix_level   = center_levels[bitstream_read(&bc, 2)];
+                hdr->center_mix_level   = center_levels[bitstream_read_cache(&bc, 2)];
             if(hdr->channel_mode & 4)
-                hdr->surround_mix_level = surround_levels[bitstream_read(&bc, 2)];
+                hdr->surround_mix_level = surround_levels[bitstream_read_cache(&bc, 2)];
         }
-        hdr->lfe_on = bitstream_read_bit(&bc);
+        hdr->lfe_on = bitstream_read_cache(&bc, 1);
 
         hdr->sr_shift = FFMAX(hdr->bitstream_id, 8) - 8;
         hdr->sample_rate = ff_ac3_sample_rate_tab[hdr->sr_code] >> hdr->sr_shift;
@@ -111,31 +113,32 @@ int ff_ac3_parse_header(BitstreamContext *bcp, AC3HeaderInfo *hdr)
     } else {
         /* Enhanced AC-3 */
         hdr->crc1 = 0;
-        hdr->frame_type = bitstream_read(&bc, 2);
+        // bitsream_prefetch(&bc, 29); 29 bits already present due _peek
+        hdr->frame_type = bitstream_read_cache(&bc, 2);
         if(hdr->frame_type == EAC3_FRAME_TYPE_RESERVED)
             return AAC_AC3_PARSE_ERROR_FRAME_TYPE;
 
-        hdr->substreamid = bitstream_read(&bc, 3);
+        hdr->substreamid = bitstream_read_cache(&bc, 3);
 
-        hdr->frame_size = (bitstream_read(&bc, 11) + 1) << 1;
+        hdr->frame_size = (bitstream_read_cache(&bc, 11) + 1) << 1;
         if(hdr->frame_size < AC3_HEADER_SIZE)
             return AAC_AC3_PARSE_ERROR_FRAME_SIZE;
 
-        hdr->sr_code = bitstream_read(&bc, 2);
+        hdr->sr_code = bitstream_read_cache(&bc, 2);
         if (hdr->sr_code == 3) {
-            int sr_code2 = bitstream_read(&bc, 2);
+            int sr_code2 = bitstream_read_cache(&bc, 2);
             if(sr_code2 == 3)
                 return AAC_AC3_PARSE_ERROR_SAMPLE_RATE;
             hdr->sample_rate = ff_ac3_sample_rate_tab[sr_code2] / 2;
             hdr->sr_shift = 1;
         } else {
-            hdr->num_blocks = eac3_blocks[bitstream_read(&bc, 2)];
+            hdr->num_blocks = eac3_blocks[bitstream_read_cache(&bc, 2)];
             hdr->sample_rate = ff_ac3_sample_rate_tab[hdr->sr_code];
             hdr->sr_shift = 0;
         }
 
-        hdr->channel_mode = bitstream_read(&bc, 3);
-        hdr->lfe_on       = bitstream_read_bit(&bc);
+        hdr->channel_mode = bitstream_read_cache(&bc, 3);
+        hdr->lfe_on       = bitstream_read_cache(&bc, 1);
 
         hdr->bit_rate = (uint32_t)(8.0 * hdr->frame_size * hdr->sample_rate /
                         (hdr->num_blocks * 256.0));
