@@ -88,6 +88,10 @@ void ff_hevc_add_residual_8_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t str
 void ff_hevc_add_residual_16_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_32_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 
+void ff_hevc_add_residual_8_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_16_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_32_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+
 void ff_hevc_add_residual_16_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_32_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 
@@ -351,6 +355,10 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
 #if HAVE_AVX_EXTERNAL
             SET_QPEL_FUNCS(1, 1, 8, avx, hevc_qpel_hv);
             SET_EPEL_FUNCS(1, 1, 8, avx, hevc_epel_hv);
+
+            c->add_residual[1] = ff_hevc_add_residual_8_8_avx;
+            c->add_residual[2] = ff_hevc_add_residual_16_8_avx;
+            c->add_residual[3] = ff_hevc_add_residual_32_8_avx;
 #endif /* HAVE_AVX_EXTERNAL */
         }
         if (EXTERNAL_AVX2(cpu_flags)) {
