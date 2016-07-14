@@ -78,6 +78,19 @@ IDCT_FUNCS(32x32, sse2);
 IDCT_FUNCS(16x16, avx2);
 IDCT_FUNCS(32x32, avx2);
 
+void ff_hevc_add_residual_4_8_mmxext(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_8_8_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_16_8_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_32_8_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+
+void ff_hevc_add_residual_4_10_mmxext(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_8_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_16_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_32_10_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+
+void ff_hevc_add_residual_16_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+void ff_hevc_add_residual_32_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+
 #define GET_PIXELS(width, depth, cf)                                                                      \
 void ff_hevc_get_pixels_ ## width ## _ ## depth ## _ ## cf(int16_t *dst, ptrdiff_t dststride,             \
                                                            uint8_t *src, ptrdiff_t srcstride,             \
@@ -273,6 +286,11 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             c->idct_dc[1] = ff_hevc_idct_8x8_dc_8_sse2;
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_8_sse2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_8_sse2;
+
+            c->add_residual[1] = ff_hevc_add_residual_8_8_sse2;
+            c->add_residual[2] = ff_hevc_add_residual_16_8_sse2;
+            c->add_residual[3] = ff_hevc_add_residual_32_8_sse2;
+
             SET_QPEL_FUNCS(0, 0, 8, sse2, ff_hevc_get_pixels);
             SET_EPEL_FUNCS(0, 0, 8, sse2, ff_hevc_get_pixels);
 
@@ -300,6 +318,10 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             c->idct_dc[1] = ff_hevc_idct_8x8_dc_10_sse2;
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_10_sse2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_10_sse2;
+
+            c->add_residual[1]    = ff_hevc_add_residual_8_10_sse2;
+            c->add_residual[2]    = ff_hevc_add_residual_16_10_sse2;
+            c->add_residual[3]    = ff_hevc_add_residual_32_10_sse2;
 
             SET_QPEL_FUNCS(0, 0, 10, sse2, ff_hevc_get_pixels);
             SET_EPEL_FUNCS(0, 0, 10, sse2, ff_hevc_get_pixels);
@@ -359,6 +381,9 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
         if (EXTERNAL_AVX2(cpu_flags)) {
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_10_avx2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_10_avx2;
+
+            c->add_residual[2] = ff_hevc_add_residual_16_10_avx2;
+            c->add_residual[3] = ff_hevc_add_residual_32_10_avx2;
         }
     }
 #endif /* ARCH_X86_64 */
