@@ -92,6 +92,8 @@ void ff_hevc_add_residual_8_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t strid
 void ff_hevc_add_residual_16_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_32_8_avx(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 
+void ff_hevc_add_residual_32_8_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
+
 void ff_hevc_add_residual_16_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_32_10_avx2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 
@@ -364,6 +366,8 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
         if (EXTERNAL_AVX2(cpu_flags)) {
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_8_avx2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_8_avx2;
+
+            c->add_residual[3] = ff_hevc_add_residual_32_8_avx2;
         }
     } else if (bit_depth == 10) {
         if (EXTERNAL_SSSE3(cpu_flags)) {
