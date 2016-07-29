@@ -78,6 +78,15 @@ IDCT_FUNCS(32x32, sse2);
 IDCT_FUNCS(16x16, avx2);
 IDCT_FUNCS(32x32, avx2);
 
+void ff_hevc_idct_4x4_8_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_4x4_10_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_8x8_8_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_8x8_10_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_16x16_8_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_16x16_10_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_32x32_8_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_32x32_10_avx(int16_t *coeffs, int col_limit);
+
 #define GET_PIXELS(width, depth, cf)                                                                      \
 void ff_hevc_get_pixels_ ## width ## _ ## depth ## _ ## cf(int16_t *dst, ptrdiff_t dststride,             \
                                                            uint8_t *src, ptrdiff_t srcstride,             \
@@ -270,6 +279,7 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             c->hevc_v_loop_filter_chroma = ff_hevc_v_loop_filter_chroma_8_sse2;
             c->hevc_h_loop_filter_chroma = ff_hevc_h_loop_filter_chroma_8_sse2;
 
+
             c->idct_dc[1] = ff_hevc_idct_8x8_dc_8_sse2;
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_8_sse2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_8_sse2;
@@ -329,6 +339,11 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
 #if HAVE_AVX_EXTERNAL
             SET_QPEL_FUNCS(1, 1, 8, avx, hevc_qpel_hv);
             SET_EPEL_FUNCS(1, 1, 8, avx, hevc_epel_hv);
+
+            c->idct[0]         = ff_hevc_idct_4x4_8_avx;
+            c->idct[1]         = ff_hevc_idct_8x8_8_avx;
+            c->idct[2]         = ff_hevc_idct_16x16_8_avx;
+            c->idct[3]         = ff_hevc_idct_32x32_8_avx;
 #endif /* HAVE_AVX_EXTERNAL */
         }
         if (EXTERNAL_AVX2(cpu_flags)) {
@@ -354,6 +369,12 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             SET_EPEL_FUNCS(0, 1, 10, avx, ff_hevc_epel_h);
             SET_EPEL_FUNCS(1, 0, 10, avx, ff_hevc_epel_v);
             SET_EPEL_FUNCS(1, 1, 10, avx, hevc_epel_hv);
+
+            c->idct[0] = ff_hevc_idct_4x4_10_avx;
+            c->idct[1] = ff_hevc_idct_8x8_10_avx;
+            c->idct[2] = ff_hevc_idct_16x16_10_avx;
+            c->idct[3] = ff_hevc_idct_32x32_10_avx;
+
 #endif /* HAVE_AVX_EXTERNAL */
         }
         if (EXTERNAL_AVX2(cpu_flags)) {
