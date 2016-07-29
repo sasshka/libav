@@ -78,6 +78,9 @@ IDCT_FUNCS(32x32, sse2);
 IDCT_FUNCS(16x16, avx2);
 IDCT_FUNCS(32x32, avx2);
 
+void ff_hevc_idct_4x4_8_avx(int16_t *coeffs, int col_limit);
+void ff_hevc_idct_4x4_10_avx(int16_t *coeffs, int col_limit);
+
 void ff_hevc_add_residual_4_8_mmxext(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_8_8_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
 void ff_hevc_add_residual_16_8_sse2(uint8_t *dst, int16_t *coeffs, ptrdiff_t stride);
@@ -289,6 +292,7 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             c->hevc_v_loop_filter_chroma = ff_hevc_v_loop_filter_chroma_8_sse2;
             c->hevc_h_loop_filter_chroma = ff_hevc_h_loop_filter_chroma_8_sse2;
 
+
             c->idct_dc[1] = ff_hevc_idct_8x8_dc_8_sse2;
             c->idct_dc[2] = ff_hevc_idct_16x16_dc_8_sse2;
             c->idct_dc[3] = ff_hevc_idct_32x32_dc_8_sse2;
@@ -357,6 +361,8 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
 #if HAVE_AVX_EXTERNAL
             SET_QPEL_FUNCS(1, 1, 8, avx, hevc_qpel_hv);
             SET_EPEL_FUNCS(1, 1, 8, avx, hevc_epel_hv);
+
+            c->idct[0]         = ff_hevc_idct_4x4_8_avx;
 
             c->add_residual[1] = ff_hevc_add_residual_8_8_avx;
             c->add_residual[2] = ff_hevc_add_residual_16_8_avx;
