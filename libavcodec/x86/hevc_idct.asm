@@ -24,13 +24,15 @@
 
 SECTION_RODATA
 
-cextern hevc_transform_4x4
-
 pd_64: times 4 dd 64
 pd_83: times 4 dd 83
 pd_36: times 4 dd 36
 pd_2048: times 4 dd 2048
 pd_512: times 4 dd 512
+pd_89: times 4 dd 89
+pd_75: times 4 dd 75
+pd_50: times 4 dd 50
+pd_18: times 4 dd 18
 
 section .text
 
@@ -96,7 +98,14 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     psrad %1, %3
 %endmacro
 
-%macro VERTICAL_TR 2
+%macro SCALE 2
+    ADD_SHIFT m1, %1, %2
+    ADD_SHIFT m2, %1, %2
+    ADD_SHIFT m3, %1, %2
+    ADD_SHIFT m4, %1, %2
+%endmacro
+
+%macro TR_4x4 0
     mova      m11, [pd_83]
     mova      m12, [pd_36]
 
@@ -119,11 +128,6 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     paddd    m2, m8, m10        ; e1 + o1
     psubd    m3, m8, m10        ; e1 - o1
     psubd    m4, m7, m9         ; e0 - o0
-
-    ADD_SHIFT m1, %1, %2
-    ADD_SHIFT m2, %1, %2
-    ADD_SHIFT m3, %1, %2
-    ADD_SHIFT m4, %1, %2
 %endmacro
 
 ;    m1,  m2, m3, m4 is transposed
@@ -146,9 +150,16 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     movhlps   m8, m9
 %endmacro
 
+%macro C_ADD 2
+    %assign shift (20 - %1)
+    %assign c_add (1 << (shift - 1))
+    %define arr_add pd_ %+ c_add
+    mova %2, [arr_add]
+%endmacro
+
 ; void ff_hevc_idct_4x4__{8,10}_<opt>(int16_t *coeffs, int col_limit)
 ; %1 = bitdepth
-%macro IDCT 1
+%macro IDCT_4x4 1
 cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     mova     m13, [pd_64]
     pmovsxwd m1, [coeffsq]
@@ -156,7 +167,8 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     pmovsxwd m3, [coeffsq + 8]
     pmovsxwd m5, [coeffsq + 24]
 
-    VERTICAL_TR m13, 7
+    TR_4x4
+    SCALE m13, 7
     CLIP16 m1, m2, m5, m6
     CLIP16 m3, m4, m5, m6
     TRANSPOSE_4x4
@@ -166,17 +178,141 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     SWAP m3, m6
     SWAP m5, m8
 
-    %assign shift (20 - %1)
-    %assign c_add (1 << (shift - 1))
-    %define arr_add pd_ %+ c_add
-    mova m13, [arr_add]
-    VERTICAL_TR m13, 12
+    TR_4x4
+    C_ADD %1, m13
+    SCALE m13, shift
     TRANSPOSE_4x4
 
     packssdw m10, m6
     movdqa   [coeffsq], m10
     packssdw m7, m8
     movdqa   [coeffsq + 16], m7
+
+    RET
+%endmacro
+
+%macro O8 4
+    pmulld m9, m5, %1
+    pmulld m10, m6, %2
+    pmulld m11, m7, %3
+    pmulld m12, m8, %4
+%endmacro
+
+%macro STORE_RES 4
+    ADD_SHIFT m10, m13, %4 ; m10: res i1, i2, i3, i4
+    packssdw  m10, m10
+    movq    [coeffsq + %1], m10
+    ADD_SHIFT %3, m13, %4
+    packssdw  %3, %3
+    movq    [coeffsq + %2], %3
+%endmacro
+
+%macro E8_O8 8
+    %3 m9, m10
+    %4 m9, m11
+    %5 m9, m12     ; o8[0 + %1] for 4 rows
+    paddd m10, m9, %8 ; o8 + e8
+    psubd %8, m9      ; e8 - o8
+    STORE_RES %6 + %1, %7 + %1, %8, %2
+%endmacro
+
+%macro TR_8x4 2
+    ; load 4 columns of even rows
+    pmovsxwd m1, [coeffsq + %1]
+    pmovsxwd m2, [coeffsq + 2 * 32 + %1]
+    pmovsxwd m3, [coeffsq + 2 * 16 + %1]
+    pmovsxwd m5, [coeffsq + 2 * 48 + %1]
+
+    TR_4x4 ; e8: m1, m2, m3, m4, for 4 columns only
+
+    ; load 4 columns of odd rows
+    pmovsxwd m5, [coeffsq + 16 + %1]
+    pmovsxwd m6, [coeffsq + 2 * 24 + %1]
+    pmovsxwd m7, [coeffsq + 2 * 40 + %1]
+    pmovsxwd m8, [coeffsq + 2 * 56 + %1]
+
+    mova m14, [pd_89]
+    mova m15, [pd_75]
+    mova m0,  [pd_50]
+
+    O8 m14, m15, m0, [pd_18]
+    E8_O8 %1, %2, paddd, paddd, paddd, 0, 16 * 7, m1
+
+    mova m1, [pd_18]
+    O8 m15, m1, m14, m0
+    E8_O8 %1, %2, psubd, psubd, psubd, 16, 16 * 6, m2
+
+    O8 m0, m14, m1, m15
+    E8_O8 %1, %2, psubd, paddd, paddd, 16 * 2, 16 * 5, m3
+
+    O8 m1, m0, m15, m14
+    E8_O8 %1, %2, psubd, paddd, psubd, 16 * 3, 16 * 4, m4
+%endmacro
+
+%macro LOAD_BLOCK 5
+    pmovsxwd %2, [coeffsq + %1]
+    pmovsxwd %3, [coeffsq + 16 + %1]
+    pmovsxwd %4, [coeffsq + 16 * 2 + %1]
+    pmovsxwd %5, [coeffsq + 16 * 3 + %1]
+%endmacro
+
+%macro STORE_BLOCK 5
+    packssdw %2, %2
+    movq    [coeffsq + %1], %2
+    packssdw %3, %3
+    movq    [coeffsq + 16 + %1], %3
+    packssdw %4, %4
+    movq    [coeffsq + 16 * 2 + %1], %4
+    packssdw %5, %5
+    movq    [coeffsq + 16 * 3 + %1], %5
+%endmacro
+
+%macro TRANSPOSE_8x8 0
+ ; transpose 8x8 M1 M2 ^T = M1^t M3^t
+                  ; M3 M4      M2^t M4^t
+    ; M1 4x4 block
+    LOAD_BLOCK 0, m1, m2, m3, m4
+    TRANSPOSE_4x4 ; m10, m6, m7, m8
+    STORE_BLOCK 0, m10, m6, m7, m8
+
+    ; M3
+    LOAD_BLOCK 64, m5, m11, m12, m13
+
+    ; M2
+    LOAD_BLOCK 8, m1, m2, m3, m4
+    TRANSPOSE_4x4 ; m10, m6, m7, m8
+    STORE_BLOCK 64, m10, m6, m7, m8
+
+    ; transpose and store M3
+    SWAP m5, m1
+    SWAP m11, m2
+    SWAP m12, m3
+    SWAP m13, m4
+    TRANSPOSE_4x4
+    STORE_BLOCK 8, m10, m6, m7, m8
+
+    ; M4
+    LOAD_BLOCK 64 + 8, m1, m2, m3, m4
+    TRANSPOSE_4x4 ; m10, m6, m7, m8
+    STORE_BLOCK 64 + 8, m10, m6, m7, m8
+%endmacro
+
+; void ff_hevc_idct_8x8__{8,10}_<opt>(int16_t *coeffs, int col_limit)
+; %1 = bitdepth
+%macro IDCT_8x8 1
+cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
+    mova     m13, [pd_64]
+
+    TR_8x4 0, 7
+    TR_8x4 8, 7
+
+    TRANSPOSE_8x8
+
+    C_ADD %1, m13
+    TR_8x4 0, shift
+    TR_8x4 8, shift
+
+    TRANSPOSE_8x8
 
     RET
 %endmacro
@@ -192,7 +328,8 @@ IDCT_DC    16,  4,  8
 IDCT_DC    32, 16,  8
 
 INIT_XMM avx
-IDCT 8
+IDCT_4x4 8
+IDCT_8x8 8
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
@@ -211,7 +348,8 @@ IDCT_DC    16,  4, 10
 IDCT_DC    32, 16, 10
 
 INIT_XMM avx
-IDCT 10
+IDCT_4x4 10
+IDCT_8x8 10
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
