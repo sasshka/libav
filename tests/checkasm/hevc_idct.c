@@ -35,6 +35,69 @@
         }                                       \
     } while (0)
 
+static void check_idct(HEVCDSPContext h, int bit_depth)
+{
+    int i;
+    LOCAL_ALIGNED(32, int16_t, coeffs0, [16 * 16]);
+    LOCAL_ALIGNED(32, int16_t, coeffs1, [16 * 16]);
+    int32_t arr[2] = {-1230, -130};
+
+    for (i = 2; i <= 4; i++) {
+        int block_size = 1 << i;
+        int size = block_size * block_size;
+        int col_limit = block_size;
+        declare_func(void, int16_t *coeffs, int col_limit);
+
+        randomize_buffers(coeffs0, size);
+//        if (block_size == 16) {
+//            memset(coeffs0, 0, 2 * 256);
+//            for (int j = 0; j < 16; j++) {
+//               // coeffs0[32] = 1;
+//                coeffs0[j*16] = j*10+10;
+//                coeffs0[j*16 + 1] = (j*1)*10+10;
+//                coeffs0[j*16 + 2] = (j*1)*10+10;
+//                coeffs0[j*16 + 3] = (j*1)*10+10;
+//                coeffs0[j*16 + 4] = (j*1)*10+10;
+////                printf("c[%d] %d\n", (j+1)*8, coeffs0[(j+1)*8]);
+//            }
+//            for (int j = 0; j < 256; j++) {
+//                printf("%d ", coeffs0[j]);
+//                if (!((j + 1)%16))
+//                    printf("\n");
+//            }
+//        }
+        memcpy(coeffs1, coeffs0, sizeof(*coeffs0) * size);
+        if (check_func(h.idct[i - 2], "hevc_idct_%dx%d_%d", block_size, block_size, bit_depth)) {
+//            for (int j = 0; j < 2; j++)
+//                printf("%d ", (arr[j] + 64) >> 7);
+//            printf("\n");
+            call_ref(coeffs0, col_limit);
+            call_new(coeffs1, col_limit);
+            if (memcmp(coeffs0, coeffs1, sizeof(*coeffs0) * size)) {
+                printf("transformed:\n");
+                for (int j = 0; j < 256; j++) {
+                    printf("%d, ", coeffs1[j]);
+                    if (!((j + 1)%16))
+                        printf("\n");
+                }
+                printf("expected:\n");
+                for (int j = 0; j < 256; j++) {
+                    printf("%d, ", coeffs0[j]);
+                    if (!((j + 1)%16))
+                        printf("\n");
+                }
+//                for (int j = 0; j < 256; j++) {
+//                    if (coeffs0[j] != coeffs1[j])
+//                        printf("j %d, c0 %d c1 %d\n", j, coeffs0[j], coeffs1[j]);
+//                }
+
+                fail();
+            }
+            bench_new(coeffs1, col_limit);
+        }
+    }
+}
+
 static void check_idct_dc(HEVCDSPContext h, int bit_depth)
 {
     int i;
@@ -49,7 +112,7 @@ static void check_idct_dc(HEVCDSPContext h, int bit_depth)
         randomize_buffers(coeffs0, size);
         memcpy(coeffs1, coeffs0, sizeof(*coeffs0) * size);
 
-        if (check_func(h.idct_dc[i - 2], "idct_%dx%d_dc_%d", block_size, block_size, bit_depth)) {
+        if (check_func(h.idct_dc[i - 2], "hevc_idct_%dx%d_dc_%d", block_size, block_size, bit_depth)) {
             call_ref(coeffs0);
             call_new(coeffs1);
             if (memcmp(coeffs0, coeffs1, sizeof(*coeffs0) * size))
@@ -70,4 +133,12 @@ void checkasm_check_hevc_idct(void)
         check_idct_dc(h, bit_depth);
     }
     report("idct_dc");
+
+    for (bit_depth = 8; bit_depth <= 10; bit_depth++) {
+        HEVCDSPContext h;
+
+        ff_hevc_dsp_init(&h, bit_depth);
+        check_idct(h, bit_depth);
+    }
+    report("idct");
 }
