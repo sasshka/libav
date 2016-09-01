@@ -252,11 +252,10 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %6 - add
 %macro STORE_8 6
     ADD_SHIFT %5, %6, %4
-    packssdw  %5, %5
-    movq    [coeffsq + %1], %5
     ADD_SHIFT %3, %6, %4
-    packssdw  %3, %3
-    movq    [coeffsq + %2], %3
+    packssdw  %5, %3
+    movq      [coeffsq + %1], %5
+    movhps    [coeffsq + %2], %5
 %endmacro
 
 ; %1 - horizontal offset
@@ -277,10 +276,11 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; 8x4 residuals are processed and stored
 ; %1 - horizontal offset
 ; %2 - shift
-; %3 - offset of the second even row
-; %4 - step: 1 for 8x8, 2 for 16x16
+; %3 - offset of the even row
+; %4 - step: 1 for 8x8, 2 for 16x16, 4 for 32x32
 ; %5 - offset of the odd row
-%macro TR_8x4 5
+; %6 - block size
+%macro TR_8x4 6
     ; load 4 columns of even rows
     LOAD_BLOCK %1, m1, m2, m3, m5, 2 * %4 * %3, %4 * %3, 3 * %4 * %3, 0
 
@@ -293,31 +293,27 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     mova m15, [pd_75]
     mova m0,  [pd_50]
 
-    %assign block_size %3 >> 2
-
     O8 m14, m15, m0, [pd_18], m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, paddd, paddd, paddd, 0, %5 * 7, m1, block_size
+    E8_O8 %1, %2, paddd, paddd, paddd, 0, %5 * 7, m1, %6
 
     mova m1, [pd_18]
     O8 m15, m1, m14, m0, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, psubd, psubd, %5, %5 * 6, m2, block_size
+    E8_O8 %1, %2, psubd, psubd, psubd, %5, %5 * 6, m2, %6
 
     O8 m0, m14, m1, m15, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, paddd, paddd, %5 * 2, %5 * 5, m3, block_size
+    E8_O8 %1, %2, psubd, paddd, paddd, %5 * 2, %5 * 5, m3, %6
 
     O8 m1, m0, m15, m14, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, paddd, psubd, %5 * 3, %5 * 4, m4, block_size
+    E8_O8 %1, %2, psubd, paddd, psubd, %5 * 3, %5 * 4, m4, %6
 %endmacro
 
 %macro STORE_BLOCK 9
-    packssdw %2, %2
-    movq    [coeffsq + %9 + %1], %2
-    packssdw %3, %3
-    movq    [coeffsq + %6 + %1], %3
-    packssdw %4, %4
-    movq    [coeffsq + %7 + %1], %4
-    packssdw %5, %5
-    movq    [coeffsq + %8 + %1], %5
+    packssdw %2, %3
+    movq     [coeffsq + %9 + %1], %2
+    movhps   [coeffsq + %6 + %1], %2
+    packssdw %4, %5
+    movq     [coeffsq + %7 + %1], %4
+    movhps   [coeffsq + %8 + %1], %4
 %endmacro
 
 ; load block i and store it in m5, m11, m12, m13
@@ -378,14 +374,14 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     mova     m13, [pd_64]
 
-    TR_8x4 0, 7, 32, 1, 16
-    TR_8x4 8, 7, 32, 1, 16
+    TR_8x4 0, 7, 32, 1, 16, 8
+    TR_8x4 8, 7, 32, 1, 16, 8
 
     TRANSPOSE_8x8
 
     C_ADD %1, m13
-    TR_8x4 0, shift, 32, 1, 16
-    TR_8x4 8, shift, 32, 1, 16
+    TR_8x4 0, shift, 32, 1, 16, 8
+    TR_8x4 8, shift, 32, 1, 16, 8
 
     TRANSPOSE_8x8
 
@@ -396,7 +392,7 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
 ; %9 - e16 - o16 offset
 ; %10 - shift
 ; %11 - add
-%macro E16_O16 11
+%macro E16_O16 12
     %1 m1, m2
     %2 m1, m3
     %3 m1, m4
@@ -408,19 +404,22 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     movu m2, [rsp + %8]
     psubd m3, m2, m1 ; e16 - o16
     paddd m1, m2     ; o16 + e16
-    STORE_8 %8, %9, m3, %10, m1, %11
+    STORE_%12 %8, %9, m3, %10, m1, %11
 %endmacro
 
-%macro TR_16x4 3
+; %6 - width in bytes
+; %7 - STORE 8/16
+; %9 - step: 1 for 16x16, 2 for 32x32
+%macro TR_16x4 8
     mova     m13, [pd_64]
 
     ; produce 8x4 matrix of e16 coeffs
     ; for 4 first rows and store it on stack (128 bytes)
-    TR_8x4 %1, 7, 64, 2, 32
+    TR_8x4 %1, 7, %4, %5, %6, %8
 
     ; load 8 even rows
-    LOAD_BLOCK %1, m9, m10, m11, m12, 3 * 32, 5 * 32, 7 * 32, 32
-    LOAD_BLOCK %1, m13, m14, m15, m0, 11 * 32, 13 * 32, 15 * 32, 9 * 32
+    LOAD_BLOCK %1, m9, m10, m11, m12, %9 * 3 * %6, %9 * 5 * %6, %9 * 7 * %6, %9 * %6
+    LOAD_BLOCK %1, m13, m14, m15, m0, %9 * 11 * %6, %9 * 13 * %6, %9 * 15 * %6, %9 * 9 * %6
 
     ; multiply src coeffs with the transform
     ; coeffs and store the intermediate results on m1, ... , m8
@@ -430,42 +429,42 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     ; o16[0]
     O8 [pd_90], [pd_87], [pd_80], [pd_70], m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_57], [pd_43], [pd_25], [pd_9],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, paddd, paddd, paddd, paddd, paddd, paddd, 0 + %1, 15 * 32 + %1, %2, %3
+    E16_O16 paddd, paddd, paddd, paddd, paddd, paddd, paddd, 0 + %1, 15 * %6 + %1, %2, %3, %7
 
     ; o16[1]
     O8 [pd_87], [pd_57], [pd_9],  [pd_43],  m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_80], [pd_90], [pd_70], [pd_25],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, paddd, psubd, psubd, psubd, psubd, psubd, 32 + %1, 14 * 32 + %1, %2, %3
+    E16_O16 paddd, paddd, psubd, psubd, psubd, psubd, psubd, %6 + %1, 14 * %6 + %1, %2, %3, %7
 
     ; o16[2]
     O8 [pd_80], [pd_9],  [pd_70], [pd_87], m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_25], [pd_57], [pd_90], [pd_43], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, psubd, psubd, psubd, paddd, paddd, paddd, 2 * 32 + %1, 13 * 32 + %1, %2, %3
+    E16_O16 paddd, psubd, psubd, psubd, paddd, paddd, paddd, 2 * %6 + %1, 13 * %6 + %1, %2, %3, %7
 
     ; o16[3]
     O8 [pd_70], [pd_43], [pd_87], [pd_9],  m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_90], [pd_25], [pd_80], [pd_57], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, psubd, paddd, paddd, paddd, psubd, psubd, 3 * 32 + %1, 12 * 32 + %1, %2, %3
+    E16_O16 psubd, psubd, paddd, paddd, paddd, psubd, psubd, 3 * %6 + %1, 12 * %6 + %1, %2, %3, %7
 
     ; o16[4]
     O8 [pd_57], [pd_80], [pd_25], [pd_90],  m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_9],  [pd_87], [pd_43], [pd_70],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, psubd, paddd, psubd, psubd, paddd, paddd, 4 * 32 + %1, 11 * 32 + %1, %2, %3
+    E16_O16 psubd, psubd, paddd, psubd, psubd, paddd, paddd, 4 * %6 + %1, 11 * %6 + %1, %2, %3, %7
 
     ; o16[5]
     O8 [pd_43], [pd_90], [pd_57], [pd_25],  m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_87], [pd_70], [pd_9],  [pd_80],  m13, m14, m15, m0, m5, m6, m7, m8
-    E16_O16 psubd, paddd, paddd, psubd, paddd, paddd, psubd, 5 * 32 + %1, 10 * 32 + %1, %2, %3
+    E16_O16 psubd, paddd, paddd, psubd, paddd, paddd, psubd, 5 * %6 + %1, 10 * %6 + %1, %2, %3, %7
 
     ; o16[6]
     O8 [pd_25], [pd_70], [pd_90], [pd_80], m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_43], [pd_9], [pd_57],  [pd_87], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, paddd, psubd, paddd, paddd, psubd, paddd, 6 * 32 + %1, 9 * 32 + %1, %2, %3
+    E16_O16 psubd, paddd, psubd, paddd, paddd, psubd, paddd, 6 * %6 + %1, 9 * %6 + %1, %2, %3, %7
 
     ; o16[7]
     O8 [pd_9], [pd_25], [pd_43],  [pd_57], m9,  m10, m11, m12, m1, m2, m3, m4
     O8 [pd_70], [pd_80], [pd_87], [pd_90], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, paddd, psubd, paddd, psubd, paddd, psubd, 7 * 32 + %1, 8 * 32 + %1, %2, %3
+    E16_O16 psubd, paddd, psubd, paddd, psubd, paddd, psubd, 7 * %6 + %1, 8 * %6 + %1, %2, %3, %7
 %endmacro
 
 %macro TRANSPOSE_16x16 0
@@ -507,20 +506,32 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
 %macro IDCT_16x16 1
 cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
 
-    TR_16x4 0, 7, [pd_64]
-    TR_16x4 8, 7, [pd_64]
-    TR_16x4 16, 7, [pd_64]
-    TR_16x4 24, 7, [pd_64]
+    TR_16x4 0, 7, [pd_64], 64, 2, 32, 8, 16, 1
+    TR_16x4 8, 7, [pd_64], 64, 2, 32, 8, 16, 1
+    TR_16x4 16, 7, [pd_64], 64, 2, 32, 8, 16, 1
+    TR_16x4 24, 7, [pd_64], 64, 2, 32, 8, 16, 1
 
     TRANSPOSE_16x16
 
     C_ADD_16 %1
-    TR_16x4 0, shift, [arr_add]
-    TR_16x4 8, shift, [arr_add]
-    TR_16x4 16, shift, [arr_add]
-    TR_16x4 24, shift, [arr_add]
+    TR_16x4 0, shift, [arr_add], 64, 2, 32, 8, 16, 1
+    TR_16x4 8, shift, [arr_add], 64, 2, 32, 8, 16, 1
+    TR_16x4 16, shift, [arr_add], 64, 2, 32, 8, 16, 1
+    TR_16x4 24, shift, [arr_add], 64, 2, 32, 8, 16, 1
 
     TRANSPOSE_16x16
+
+    RET
+%endmacro
+
+; void ff_hevc_idct_32x32_{8,10}_<opt>(int16_t *coeffs, int col_limit)
+; %1 = bitdepth
+%macro IDCT_32x32 1
+cglobal hevc_idct_32x32_ %+ %1, 1, 1, 15, 2048, coeffs
+    TR_16x4 0, 7, [pd_64], 128, 4, 64, 16, 16, 2
+
+
+
 
     RET
 %endmacro
