@@ -24,9 +24,14 @@
 
 SECTION_RODATA
 
+pw_64: times 8 dw 64
+pw_64_m64: times 4 dw 64, -64
+pw_83_36: times 4 dw 83, 36
+pw_36_m83: times 4 dw 36, -83
+
 pd_64: times 4 dd 64
-pd_83: times 4 dd 83
-pd_36: times 4 dd 36
+;pd_83: times 4 dd 83
+;pd_36: times 4 dd 36
 pd_2048: times 4 dd 2048
 pd_512: times 4 dd 512
 pd_89: times 4 dd 89
@@ -95,16 +100,6 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     RET
 %endmacro
 
-; pack dwords in %1 and %2 xmm registers
-; to words to clip them to 16 bit, then
-; unpack them back
-%macro CLIP16 4
-    packssdw   %3, %1, %2
-    packssdw   %4, %2, %1
-    pmovsxwd   %1, %3
-    pmovsxwd   %2, %4
-%endmacro
-
 ; add constant %2 to %1
 ; then shift %1 with %3
 %macro ADD_SHIFT 3
@@ -113,58 +108,56 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
 %endmacro
 
 %macro SCALE 2
+    ADD_SHIFT m0, %1, %2
     ADD_SHIFT m1, %1, %2
     ADD_SHIFT m2, %1, %2
     ADD_SHIFT m3, %1, %2
-    ADD_SHIFT m4, %1, %2
 %endmacro
 
-; take m1, m2, m3, m4,
+; take 16 bit input in m1 and m3
 ; do the 4x4 vertical IDCT
-; without SCALE, store output
-; back in m1, m2, m3, m4
+; without SCALE, store 32 bit output
+; in m0, m1, m2, m3
 %macro TR_4x4 0
-    mova      m11, [pd_83]
-    mova      m12, [pd_36]
+    ; interleaves src0 with src2 to m1
+    ;         and src1 with scr3 to m3
+    ; src0: 00 01 02 03     m1: 00 02 01 21 02 22 03 23
+    ; src1: 10 11 12 13 -->
+    ; src2: 20 21 22 23     m3: 10 30 11 31 12 32 13 33
+    ; src3: 30 31 32 33
 
-    pslld     m1,  6            ; m1 = 64*src0
-    pslld     m2,  6            ; m2 = 64*src2
+    SBUTTERFLY wd, 1, 3, 0
 
-    pmulld    m4,  m3, m11      ; m4 = 83*src1
-    pmulld    m3,  m12          ; m3 = 36*src1
+    pmaddwd m0, m1, [pw_64] ; e0
+    pmaddwd m1, [pw_64_m64] ; e1
+    pmaddwd m2, m3, [pw_83_36] ; o0
+    pmaddwd m3, [pw_36_m83] ; o1
 
-    pmulld    m6,  m5, m11      ; m6 = 83*src3
-    pmulld    m5,  m12          ; m5 = 36*src3
+    SUMSUB_BA d, 2, 0, 4
+    SUMSUB_BA d, 3, 1, 4
 
-    paddd    m7,  m1, m2        ; e0
-    psubd    m8,  m1, m2        ; e1
-
-    paddd    m9,  m4, m5        ; o0
-    psubd    m10, m3, m6        ; o1
-
-    paddd    m1, m7, m9         ; e0 + o0
-    paddd    m2, m8, m10        ; e1 + o1
-    psubd    m3, m8, m10        ; e1 - o1
-    psubd    m4, m7, m9         ; e0 - o0
+    SWAP m0, m2
+    SWAP m1, m3
+    SWAP m2, m3
 %endmacro
 
-;    m1,  m2, m3, m4 is transposed
-; to m10, m6, m7, m8
+;    m0,  m1, m2, m3 is transposed
+; to m5, m6, m7, m8
 %macro TRANSPOSE_4x4 0
-    punpckldq m10, m1, m2
-    punpckldq m6, m3, m4
-    movlhps   m10, m6
+    punpckldq m5, m0, m1
+    punpckldq m6, m2, m3
+    movlhps   m5, m6
 
-    punpckldq m7, m1, m2
-    punpckldq m6, m3, m4
+    punpckldq m7, m0, m1
+    punpckldq m6, m2, m3
     movhlps   m6, m7
 
-    punpckhdq m7, m1, m2
-    punpckhdq m8, m3, m4
+    punpckhdq m7, m0, m1
+    punpckhdq m8, m2, m3
     movlhps   m7, m8
 
-    punpckhdq m9, m1, m2
-    punpckhdq m8, m3, m4
+    punpckhdq m9, m0, m1
+    punpckhdq m8, m2, m3
     movhlps   m8, m9
 %endmacro
 
@@ -197,27 +190,31 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
 ; %1 = bitdepth
 %macro IDCT_4x4 1
 cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
-    mova     m13, [pd_64]
-    LOAD_BLOCK 0, m1, m2, m3, m5, 16, 8, 24, 0
+    mova m1, [coeffsq]
+    mova m3, [coeffsq + 16]
 
     TR_4x4
-    SCALE m13, 7
-    CLIP16 m1, m2, m5, m6
-    CLIP16 m3, m4, m5, m6
+    mova m9, [pd_64]
+    SCALE m9, 7
+
     TRANSPOSE_4x4
 
-    SWAP m1, m10
+    SWAP m0, m5
+    SWAP m1, m6
     SWAP m2, m7
-    SWAP m3, m6
-    SWAP m5, m8
+    SWAP m3, m8
+
+    ; clip16
+    packssdw m1, m0, m1
+    packssdw m3, m2, m3
 
     TR_4x4
-    C_ADD %1, m13
-    SCALE m13, shift
+    C_ADD %1, m9
+    SCALE m9, shift
     TRANSPOSE_4x4
 
-    packssdw m10, m6
-    movdqa   [coeffsq], m10
+    packssdw m5, m6
+    movdqa   [coeffsq], m5
     packssdw m7, m8
     movdqa   [coeffsq + 16], m7
 
@@ -410,7 +407,7 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
 ; %6 - width in bytes
 ; %7 - STORE 8/16
 ; %9 - step: 1 for 16x16, 2 for 32x32
-%macro TR_16x4 8
+%macro TR_16x4 9
     mova     m13, [pd_64]
 
     ; produce 8x4 matrix of e16 coeffs
