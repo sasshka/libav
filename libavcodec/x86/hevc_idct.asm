@@ -24,14 +24,26 @@
 
 SECTION_RODATA
 
+; 4x4 transform coeffs
 pw_64: times 8 dw 64
 pw_64_m64: times 4 dw 64, -64
 pw_83_36: times 4 dw 83, 36
 pw_36_m83: times 4 dw 36, -83
 
+; 8x8 transform coeffs
+pw_89_75: times 4 dw 89, 75
+pw_50_18: times 4 dw 50, 18
+
+pw_75_m18: times 4 dw 75, -18
+pw_m89_m50: times 4 dw -89, -50
+
+pw_50_m89: times 4 dw 50, -89
+pw_18_75: times 4 dw 18, 75
+
+pw_18_m50: times 4 dw 18, -50
+pw_75_m89: times 4 dw 75, -89
+
 pd_64: times 4 dd 64
-;pd_83: times 4 dd 83
-;pd_36: times 4 dd 36
 pd_2048: times 4 dd 2048
 pd_512: times 4 dd 512
 pd_89: times 4 dd 89
@@ -176,10 +188,20 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     mova %2, [arr_add]
 %endmacro
 
+; %1, %2 - registers to load packed 16 bit values to
+; %3, %4, %5, %6 - vertical offsets
+; %7 - horizontal offset
+%macro LOAD_BLOCK 7
+    movq   %1, [coeffsq + %3 + %7]
+    movhps %1, [coeffsq + %5 + %7]
+    movq   %2, [coeffsq + %4 + %7]
+    movhps %2, [coeffsq + %6 + %7]
+%endmacro
+
 ; load coeffs to %2, %3, %4, %5
 ; %1 - horizontal offset
 ; %6, %7, %8, %9 - vertical offsets
-%macro LOAD_BLOCK 9
+%macro LOAD_BLOCK_T 9
     pmovsxwd %2, [coeffsq + %9 + %1]
     pmovsxwd %3, [coeffsq + %6 + %1]
     pmovsxwd %4, [coeffsq + %7 + %1]
@@ -237,7 +259,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; and  %3:  e8 - o8, with %2 offset
 ; %4 - shift, unused here
 %macro STORE_16 6
-    movu    [rsp + %1], m10
+    movu    [rsp + %1], m7
     movu    [rsp + %2], %3
 %endmacro
 
@@ -257,17 +279,19 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 
 ; %1 - horizontal offset
 ; %2 - shift
-; %6 - vertical offset for e8 + o8
-; %7 - vertical offset for e8 - o8
-; %8 - register with o8 inside
-; %9 - block_size
-%macro E8_O8 9
-    %3 m9, m10
-    %4 m9, m11
-    %5 m9, m12        ; o8[i + %1] for 4 rows
-    paddd m10, m9, %8 ; o8 + e8
-    psubd %8, m9      ; e8 - o8
-    STORE_%9 %6 + %1, %7 + %1, %8, %2, m10, m13
+; %3, %4 - transform coeffs
+; %5 - vertical offset for e8 + o8
+; %6 - vertical offset for e8 - o8
+; %7 - register with o8 inside
+; %8 - block_size
+%macro E8_O8 8
+    pmaddwd m6, m4, %3
+    pmaddwd m7, m5, %4
+    paddd m6, m7
+
+    paddd m7, m6, %7 ; o8 + e8
+    psubd %7, m6     ; e8 - o8
+    STORE_%8 %5 + %1, %6 + %1, %7, %2, m7, m8
 %endmacro
 
 ; 8x4 residuals are processed and stored
@@ -279,29 +303,25 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %6 - block size
 %macro TR_8x4 6
     ; load 4 columns of even rows
-    LOAD_BLOCK %1, m1, m2, m3, m5, 2 * %4 * %3, %4 * %3, 3 * %4 * %3, 0
+    LOAD_BLOCK  m1, m3, 0, 2 * %4 * %3, %4 * %3, 3 * %4 * %3, %1
 
-    TR_4x4 ; e8: m1, m2, m3, m4, for 4 columns only
+    TR_4x4 ; e8: m0, m1, m2, m3, for 4 columns only
 
     ; load 4 columns of odd rows
-    LOAD_BLOCK %1, m5, m6, m7, m8, 3 * %4 * %5, 5 * %4 * %5, 7 * %4 * %5, %4 * %5
+    LOAD_BLOCK m4, m5, %4 * %5, 3 * %4 * %5, 5 * %4 * %5, 7 * %4 * %5, %1
 
-    mova m14, [pd_89]
-    mova m15, [pd_75]
-    mova m0,  [pd_50]
+    ; 00 01 02 03
+    ; 10 11 12 13      m4: 10 30 11 31 12 32 13 33
 
-    O8 m14, m15, m0, [pd_18], m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, paddd, paddd, paddd, 0, %5 * 7, m1, %6
+    ; ...        -- >
+    ;                  m5: 50 70 51 71 52 72 53 73
+    ; 70 71 72 73
+    SBUTTERFLY wd, 4, 5, 6
 
-    mova m1, [pd_18]
-    O8 m15, m1, m14, m0, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, psubd, psubd, %5, %5 * 6, m2, %6
-
-    O8 m0, m14, m1, m15, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, paddd, paddd, %5 * 2, %5 * 5, m3, %6
-
-    O8 m1, m0, m15, m14, m5, m6, m7, m8, m9, m10, m11, m12
-    E8_O8 %1, %2, psubd, paddd, psubd, %5 * 3, %5 * 4, m4, %6
+    E8_O8 %1, %2, [pw_89_75],  [pw_50_18],   0,      %5 * 7, m0, %6
+    E8_O8 %1, %2, [pw_75_m18], [pw_m89_m50], %5,     %5 * 6, m1, %6
+    E8_O8 %1, %2, [pw_50_m89], [pw_18_75],   %5 * 2, %5 * 5, m2, %6
+    E8_O8 %1, %2, [pw_18_m50], [pw_75_m89],  %5 * 3, %5 * 4, m3, %6
 %endmacro
 
 %macro STORE_BLOCK 9
@@ -313,8 +333,28 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     movhps   [coeffsq + %8 + %1], %4
 %endmacro
 
-; load block i and store it in m5, m11, m12, m13
-; load block j to m1, m2, m3, m4, transpose it
+%macro STORE_PACKED 7
+    movq     [coeffsq + %3 + %7], %1
+    movhps   [coeffsq + %4 + %7], %1
+    movq     [coeffsq + %5 + %7], %2
+    movhps   [coeffsq + %6 + %7], %2
+%endmacro
+
+; transpose src packed in m4, m5
+;                      to m3, m1
+%macro TRANSPOSE_PACKED 0
+    punpcklwd m0, m4, m5
+    punpckhwd m1, m4, m5
+    movhlps m2, m0
+    movlhps m0, m1
+    pshufd m3, m0, 0xd8
+    pshufd m1, m1, 0x4e
+    movlhps m2, m1
+    pshufd m1, m2, 0xd8
+%endmacro
+
+; load block i and store it in m6, m7
+; load block j to m4, m5 transpose it
 ; store block j
 ; swap register names with the block i and transpose the block
 ; store block i
@@ -326,29 +366,27 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %5 - horizontal offset for the block j
 %macro SWAP_BLOCKS 5
     ; M_i
-    LOAD_BLOCK %1, m5, m11, m12, m13, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %2
+    LOAD_BLOCK m6, m7, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 
     ; M_j
-    LOAD_BLOCK %5, m1, m2, m3, m4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %4
-    TRANSPOSE_4x4 ; m10, m6, m7, m8
-    STORE_BLOCK %1, m10, m6, m7, m8, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %2
+    LOAD_BLOCK m4, m5, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
+    TRANSPOSE_PACKED ; m3, m1
+    STORE_PACKED m3, m1, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 
     ; transpose and store M_i
-    SWAP m5, m1
-    SWAP m11, m2
-    SWAP m12, m3
-    SWAP m13, m4
-    TRANSPOSE_4x4
-    STORE_BLOCK %5, m10, m6, m7, m8, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %4
+    SWAP m6, m4
+    SWAP m7, m5
+    TRANSPOSE_PACKED
+    STORE_PACKED m3, m1, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
 %endmacro
 
 ; %1 - horizontal offset
 ; %2 - 2 - vertical offset of the block
 ; %3 - width in bytes
 %macro TRANSPOSE_BLOCK 3
-    LOAD_BLOCK %1, m1, m2, m3, m4, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %2
-    TRANSPOSE_4x4 ; m10, m6, m7, m8
-    STORE_BLOCK %1, m10, m6, m7, m8, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %2
+    LOAD_BLOCK m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
+    TRANSPOSE_PACKED ; m3, m1
+    STORE_PACKED m3, m1, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 %endmacro
 
 %macro TRANSPOSE_8x8 0
@@ -369,14 +407,13 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %1 = bitdepth
 %macro IDCT_8x8 1
 cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
-    mova     m13, [pd_64]
-
+    mova m8, [pd_64]
     TR_8x4 0, 7, 32, 1, 16, 8
     TR_8x4 8, 7, 32, 1, 16, 8
 
     TRANSPOSE_8x8
 
-    C_ADD %1, m13
+    C_ADD %1, m8
     TR_8x4 0, shift, 32, 1, 16, 8
     TR_8x4 8, shift, 32, 1, 16, 8
 
@@ -404,19 +441,20 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     STORE_%12 %8, %9, m3, %10, m1, %11
 %endmacro
 
+; %1 - horizontal offset
 ; %6 - width in bytes
 ; %7 - STORE 8/16
 ; %9 - step: 1 for 16x16, 2 for 32x32
 %macro TR_16x4 9
-    mova     m13, [pd_64]
+    mova m8, [pd_64]
 
     ; produce 8x4 matrix of e16 coeffs
     ; for 4 first rows and store it on stack (128 bytes)
     TR_8x4 %1, 7, %4, %5, %6, %8
 
     ; load 8 even rows
-    LOAD_BLOCK %1, m9, m10, m11, m12, %9 * 3 * %6, %9 * 5 * %6, %9 * 7 * %6, %9 * %6
-    LOAD_BLOCK %1, m13, m14, m15, m0, %9 * 11 * %6, %9 * 13 * %6, %9 * 15 * %6, %9 * 9 * %6
+    LOAD_BLOCK_T %1, m9, m10, m11, m12, %9 * 3 * %6, %9 * 5 * %6, %9 * 7 * %6, %9 * %6
+    LOAD_BLOCK_T %1, m13, m14, m15, m0, %9 * 11 * %6, %9 * 13 * %6, %9 * 15 * %6, %9 * 9 * %6
 
     ; multiply src coeffs with the transform
     ; coeffs and store the intermediate results on m1, ... , m8
