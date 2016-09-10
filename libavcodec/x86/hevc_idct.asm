@@ -24,6 +24,10 @@
 
 SECTION_RODATA
 
+pd_64: times 4 dd 64
+pd_2048: times 4 dd 2048
+pd_512: times 4 dd 512
+
 ; 4x4 transform coeffs
 pw_64: times 8 dw 64
 pw_64_m64: times 4 dw 64, -64
@@ -43,13 +47,6 @@ pw_18_75: times 4 dw 18, 75
 pw_18_m50: times 4 dw 18, -50
 pw_75_m89: times 4 dw 75, -89
 
-pd_64: times 4 dd 64
-pd_2048: times 4 dd 2048
-pd_512: times 4 dd 512
-pd_89: times 4 dd 89
-pd_75: times 4 dd 75
-pd_50: times 4 dd 50
-pd_18: times 4 dd 18
 ; 16x16 transformation coeffs
 pd_90: times 4 dd 90
 pd_87: times 4 dd 87
@@ -59,6 +56,16 @@ pd_57: times 4 dd 57
 pd_43: times 4 dd 43
 pd_25: times 4 dd 25
 pd_9: times 4 dd 9
+
+; 32x32 transform coeffs
+pw_90: times 8 dw 90
+pw_88_85: times 4 dw 88, 85
+pw_82_78: times 4 dw 82, 78
+pw_73_67: times 4 dw 73, 67
+pw_61_54: times 4 dw 61, 54
+pw_46_38: times 4 dw 46, 38
+pw_31_22: times 4 dw 31, 22
+pw_13_4: times 4 dw 13, 4
 
 section .text
 
@@ -343,14 +350,8 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; transpose src packed in m4, m5
 ;                      to m3, m1
 %macro TRANSPOSE_PACKED 0
-    punpcklwd m0, m4, m5
-    punpckhwd m1, m4, m5
-    movhlps m2, m0
-    movlhps m0, m1
-    pshufd m3, m0, 0xd8
-    pshufd m1, m1, 0x4e
-    movlhps m2, m1
-    pshufd m1, m2, 0xd8
+    SBUTTERFLY wd, 4, 5, 8
+    SBUTTERFLY dq, 4, 5, 8
 %endmacro
 
 ; load block i and store it in m6, m7
@@ -370,14 +371,14 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 
     ; M_j
     LOAD_BLOCK m4, m5, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
-    TRANSPOSE_PACKED ; m3, m1
-    STORE_PACKED m3, m1, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
+    TRANSPOSE_PACKED
+    STORE_PACKED m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 
     ; transpose and store M_i
     SWAP m6, m4
     SWAP m7, m5
     TRANSPOSE_PACKED
-    STORE_PACKED m3, m1, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
+    STORE_PACKED m4, m5, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
 %endmacro
 
 ; %1 - horizontal offset
@@ -385,8 +386,8 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %3 - width in bytes
 %macro TRANSPOSE_BLOCK 3
     LOAD_BLOCK m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
-    TRANSPOSE_PACKED ; m3, m1
-    STORE_PACKED m3, m1, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
+    TRANSPOSE_PACKED
+    STORE_PACKED m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 %endmacro
 
 %macro TRANSPOSE_8x8 0
@@ -559,14 +560,62 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     RET
 %endmacro
 
+; %1, 2 - transform constants
+; %3, 4 - regs with interleaved coeffs
+%macro ADD 4
+    pmaddwd m8, %3, %1
+    pmaddwd m9, %4, %2
+    paddd m10, m8
+    paddd m10, m9
+%endmacro
+
+; %1 ... %8 transform coeffs
+; %9 stack offset for e32
+; %10, %11 offsets for storing e+o/e-o back to coeffsq
+; %12 - shift
+; %13 - add
+%macro E32_O32 13
+    pxor m10, m10
+    ADD %1, %2, m0, m1
+    ADD %3, %4, m2, m3
+    ADD %5, %6, m4, m5
+    ADD %7, %8, m6, m7
+
+    packssdw m0, m0
+    movq [coeffsq], m0
+    movu m11, [rsp + %9]
+    paddd m12, m10, m11 ; o32 + e32
+    psubd m11, m10      ; e32 - o32
+    ;STORE_8 %10, %11, m11, %12, m12, %13
+%endmacro
+
+; %1 - horizontal offset
+%macro TR_32x4 3
+    TR_16x4 %1, 7, [pd_64], 128, 4, 64, 16, 16, 2
+
+    LOAD_BLOCK m0, m1,     64, 3 * 64,   5 * 64,  7 * 64, %1
+    LOAD_BLOCK m2, m3, 9 * 64, 11 * 64, 13 * 64, 15 * 64, %1
+    LOAD_BLOCK m4, m5, 17 * 64, 19 * 64, 21 * 64, 23 * 64, %1
+    LOAD_BLOCK m6, m7, 25 * 64, 27 * 64, 29 * 64, 31 * 64, %1
+    packssdw m0, m0
+    mova [coeffsq], m0
+
+    SBUTTERFLY wd, 0, 1, 8
+    SBUTTERFLY wd, 2, 3, 8
+    SBUTTERFLY wd, 4, 5, 8
+    SBUTTERFLY wd, 6, 7, 8
+
+    ;E32_O32 [pw_90], [pw_88_85], [pw_82_78], [pw_73_67], [pw_61_54], [pw_46_38], [pw_31_22], [pw_13_4], %1, %1,  31 * 64 + %1, %2, %3
+
+
+%endmacro
+
+
 ; void ff_hevc_idct_32x32_{8,10}_<opt>(int16_t *coeffs, int col_limit)
 ; %1 = bitdepth
 %macro IDCT_32x32 1
 cglobal hevc_idct_32x32_ %+ %1, 1, 1, 15, 2048, coeffs
-    TR_16x4 0, 7, [pd_64], 128, 4, 64, 16, 16, 2
-
-
-
+    TR_32x4 0, 7, [pd_64]
 
     RET
 %endmacro
@@ -585,6 +634,7 @@ INIT_XMM avx
 IDCT_4x4 8
 IDCT_8x8 8
 IDCT_16x16 8
+IDCT_32x32 8
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
@@ -606,6 +656,7 @@ INIT_XMM avx
 IDCT_4x4 10
 IDCT_8x8 10
 IDCT_16x16 10
+IDCT_32x32 10
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
