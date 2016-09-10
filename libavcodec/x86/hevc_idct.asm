@@ -133,51 +133,49 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     ADD_SHIFT m3, %1, %2
 %endmacro
 
-; take 16 bit input in m1 and m3
-; do the 4x4 vertical IDCT
-; without SCALE, store 32 bit output
-; in m0, m1, m2, m3
-%macro TR_4x4 0
-    ; interleaves src0 with src2 to m1
-    ;         and src1 with scr3 to m3
-    ; src0: 00 01 02 03     m1: 00 02 01 21 02 22 03 23
+; IDCT 4x4, expects input in m0, m1
+; %1 - shift
+; %2 - 1/0 - SCALE and Transpose or not
+%macro TR_4x4 2
+    ; interleaves src0 with src2 to m0
+    ;         and src1 with scr3 to m2
+    ; src0: 00 01 02 03     m0: 00 02 01 21 02 22 03 23
     ; src1: 10 11 12 13 -->
-    ; src2: 20 21 22 23     m3: 10 30 11 31 12 32 13 33
+    ; src2: 20 21 22 23     m1: 10 30 11 31 12 32 13 33
     ; src3: 30 31 32 33
 
-    SBUTTERFLY wd, 1, 3, 0
+    SBUTTERFLY wd, 0, 1, 2
 
-    pmaddwd m0, m1, [pw_64] ; e0
-    pmaddwd m1, [pw_64_m64] ; e1
-    pmaddwd m2, m3, [pw_83_36] ; o0
-    pmaddwd m3, [pw_36_m83] ; o1
+    pmaddwd m2, m0, [pw_64] ; e0
+    pmaddwd m3, m1, [pw_83_36] ; o0
+    pmaddwd m0, [pw_64_m64] ; e1
+    pmaddwd m1, [pw_36_m83] ; o1
 
-    SUMSUB_BA d, 2, 0, 4
-    SUMSUB_BA d, 3, 1, 4
+%if %2 == 1
+    %assign %%add 1 << (%1 - 1)
+    mova m4, [pd_ %+ %%add]
+    paddd m2 ,m4
+    paddd m0, m4
+%endif
 
-    SWAP m0, m2
-    SWAP m1, m3
-    SWAP m2, m3
-%endmacro
+    SUMSUB_BADC d, 3, 2, 1, 0, 4
 
-;    m0,  m1, m2, m3 is transposed
-; to m5, m6, m7, m8
-%macro TRANSPOSE_4x4 0
-    punpckldq m5, m0, m1
-    punpckldq m6, m2, m3
-    movlhps   m5, m6
-
-    punpckldq m7, m0, m1
-    punpckldq m6, m2, m3
-    movhlps   m6, m7
-
-    punpckhdq m7, m0, m1
-    punpckhdq m8, m2, m3
-    movlhps   m7, m8
-
-    punpckhdq m9, m0, m1
-    punpckhdq m8, m2, m3
-    movhlps   m8, m9
+%if %2 == 1
+    psrad m3, %1 ; e0 + o0
+    psrad m1, %1 ; e1 + o1
+    psrad m2, %1 ; e0 - o0
+    psrad m0, %1 ; e1 - o1
+    ;clip16
+    packssdw m3, m1
+    packssdw m0, m2
+    ; Transpose
+    SBUTTERFLY wd, 3, 0, 1
+    SBUTTERFLY wd, 3, 0, 1
+    SWAP 3, 1, 0
+%else
+    SWAP 3, 0
+    SWAP 3, 2
+%endif
 %endmacro
 
 %macro C_ADD_16 1
@@ -219,34 +217,14 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
 ; %1 = bitdepth
 %macro IDCT_4x4 1
 cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
-    mova m1, [coeffsq]
-    mova m3, [coeffsq + 16]
+    mova m0, [coeffsq]
+    mova m1, [coeffsq + 16]
 
-    TR_4x4
-    mova m9, [pd_64]
-    SCALE m9, 7
+    TR_4x4 7, 1
+    TR_4x4 20 - %1, 1
 
-    TRANSPOSE_4x4
-
-    SWAP m0, m5
-    SWAP m1, m6
-    SWAP m2, m7
-    SWAP m3, m8
-
-    ; clip16
-    packssdw m1, m0, m1
-    packssdw m3, m2, m3
-
-    TR_4x4
-    C_ADD %1, m9
-    SCALE m9, shift
-    TRANSPOSE_4x4
-
-    packssdw m5, m6
-    movdqa   [coeffsq], m5
-    packssdw m7, m8
-    movdqa   [coeffsq + 16], m7
-
+    mova [coeffsq], m0
+    mova [coeffsq + 16], m1
     RET
 %endmacro
 
@@ -310,9 +288,9 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %6 - block size
 %macro TR_8x4 6
     ; load 4 columns of even rows
-    LOAD_BLOCK  m1, m3, 0, 2 * %4 * %3, %4 * %3, 3 * %4 * %3, %1
+    LOAD_BLOCK  m0, m1, 0, 2 * %4 * %3, %4 * %3, 3 * %4 * %3, %1
 
-    TR_4x4 ; e8: m0, m1, m2, m3, for 4 columns only
+   TR_4x4 7, 0 ; e8: m0, m1, m2, m3, for 4 columns only
 
     ; load 4 columns of odd rows
     LOAD_BLOCK m4, m5, %4 * %5, 3 * %4 * %5, 5 * %4 * %5, 7 * %4 * %5, %1
