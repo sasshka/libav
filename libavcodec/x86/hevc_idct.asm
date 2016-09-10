@@ -119,20 +119,6 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
     RET
 %endmacro
 
-; add constant %2 to %1
-; then shift %1 with %3
-%macro ADD_SHIFT 3
-    paddd %1, %2
-    psrad %1, %3
-%endmacro
-
-%macro SCALE 2
-    ADD_SHIFT m0, %1, %2
-    ADD_SHIFT m1, %1, %2
-    ADD_SHIFT m2, %1, %2
-    ADD_SHIFT m3, %1, %2
-%endmacro
-
 ; IDCT 4x4, expects input in m0, m1
 ; %1 - shift
 ; %2 - 1/0 - SCALE and Transpose or not
@@ -243,7 +229,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; from m10: e8 + o8, with %1 offset
 ; and  %3:  e8 - o8, with %2 offset
 ; %4 - shift, unused here
-%macro STORE_16 6
+%macro STORE_16 5
     movu    [rsp + %1], m7
     movu    [rsp + %2], %3
 %endmacro
@@ -254,9 +240,9 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; and  %3: e8/16 - o8/16, with %2 offset           6 e8[1] - o8[1]
 ; %4 - shift                                       7 e8[0] - o8[0] --> + %2
 ; %6 - add
-%macro STORE_8 6
-    ADD_SHIFT %5, %6, %4
-    ADD_SHIFT %3, %6, %4
+%macro STORE_8 5
+    psrad    %5, %4
+    psrad    %3, %4
     packssdw  %5, %3
     movq      [coeffsq + %1], %5
     movhps    [coeffsq + %2], %5
@@ -274,9 +260,13 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     pmaddwd m7, m5, %4
     paddd m6, m7
 
+%if %8 == 8
+    paddd %7, m8
+%endif
+
     paddd m7, m6, %7 ; o8 + e8
     psubd %7, m6     ; e8 - o8
-    STORE_%8 %5 + %1, %6 + %1, %7, %2, m7, m8
+    STORE_%8 %5 + %1, %6 + %1, %7, %2, m7
 %endmacro
 
 ; 8x4 residuals are processed and stored
@@ -327,7 +317,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 
 ; transpose src packed in m4, m5
 ;                      to m3, m1
-%macro TRANSPOSE_PACKED 0
+%macro TRANSPOSE 0
     SBUTTERFLY wd, 4, 5, 8
     SBUTTERFLY dq, 4, 5, 8
 %endmacro
@@ -349,13 +339,13 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 
     ; M_j
     LOAD_BLOCK m4, m5, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
-    TRANSPOSE_PACKED
+    TRANSPOSE
     STORE_PACKED m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 
     ; transpose and store M_i
     SWAP m6, m4
     SWAP m7, m5
-    TRANSPOSE_PACKED
+    TRANSPOSE
     STORE_PACKED m4, m5, %4, %4 + %3, %4 + 2 * %3, %4 + 3 * %3, %5
 %endmacro
 
@@ -364,7 +354,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; %3 - width in bytes
 %macro TRANSPOSE_BLOCK 3
     LOAD_BLOCK m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
-    TRANSPOSE_PACKED
+    TRANSPOSE
     STORE_PACKED m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
 %endmacro
 
@@ -415,9 +405,12 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     %7 m1, m8
 
     movu m2, [rsp + %8]
+%if %12 == 8
+    paddd m2, %11
+%endif
     psubd m3, m2, m1 ; e16 - o16
     paddd m1, m2     ; o16 + e16
-    STORE_%12 %8, %9, m3, %10, m1, %11
+    STORE_%12 %8, %9, m3, %10, m1
 %endmacro
 
 ; %1 - horizontal offset
