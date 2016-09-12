@@ -407,7 +407,7 @@ void ff_hevc_dsp_init_x86(HEVCDSPContext *c, const int bit_depth)
             c->idct[0] = ff_hevc_idct_4x4_10_avx;
             c->idct[1] = ff_hevc_idct_8x8_10_avx;
             c->idct[2] = ff_hevc_idct_16x16_10_avx;
-            c->idct[3] = ff_hevc_idct_32x32_8_avx;
+            c->idct[3] = ff_hevc_idct_32x32_10_avx;
 
 #endif /* HAVE_AVX_EXTERNAL */
         }
