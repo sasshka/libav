@@ -48,159 +48,190 @@ pw_18_m50: times 4 dw 18, -50
 pw_75_m89: times 4 dw 75, -89
 
 ; 16x16 transformation coeffs
-pd_90: times 4 dd 90
-pd_87: times 4 dd 87
-pd_80: times 4 dd 80
-pd_70: times 4 dd 70
-pd_57: times 4 dd 57
-pd_43: times 4 dd 43
-pd_25: times 4 dd 25
-pd_9: times 4 dd 9
+pw_90_87: times 4 dw 90, 87
+pw_80_70: times 4 dw 80, 70
+pw_57_43: times 4 dw 57, 43
+pw_25_9: times 4 dw 25, 9
+
+pw_87_57: times 4 dw 87, 57
+pw_9_m43: times 4 dw 9, -43
+pw_m80_m90: times 4 dw -80, -90
+pw_m70_m25: times 4 dw -70, -25
+
+pw_80_9: times 4 dw 80, 9
+pw_m70_m87: times 4 dw -70, -87
+pw_m25_57: times 4 dw -25, 57
+pw_90_43: times 4 dw 90, 43
+
+pw_70_m43: times 4 dw 70, -43
+pw_m87_9: times 4 dw -87, 9
+pw_90_25: times 4 dw 90, 25
+pw_m80_m57: times 4 dw -80, -57
+
+pw_57_m80: times 4 dw 57, -80
+pw_m25_90: times 4 dw -25, 90
+pw_m9_m87: times 4 dw -9, -87
+pw_43_70: times 4 dw 43, 70
+
+pw_43_m90: times 4 dw 43, -90
+pw_57_25: times 4 dw 57, 25
+pw_m87_70: times 4 dw -87, 70
+pw_9_m80: times 4 dw 9, -80
+
+pw_25_m70: times 4 dw 25, -70
+pw_90_m80: times 4 dw 90, -80
+pw_43_9: times 4 dw 43, 9
+pw_m57_87: times 4 dw -57, 87
+
+pw_9_m25: times 4 dw 9, -25
+pw_43_m57: times 4 dw 43, -57
+pw_70_m80: times 4 dw 70, -80
+pw_87_m90: times 4 dw 87, -90
 
 ; 32x32 transform coeffs
-pw_90: times 8 dw 90
-pw_88_85: times 4 dw 88, 85
-pw_82_78: times 4 dw 82, 78
-pw_73_67: times 4 dw 73, 67
-pw_61_54: times 4 dw 61, 54
-pw_46_38: times 4 dw 46, 38
-pw_31_22: times 4 dw 31, 22
-pw_13_4: times 4 dw 13, 4
+trans_coeff32_0: times 8 dw 90
+times 4 dw 88, 85
+times 4 dw 82, 78
+times 4 dw 73, 67
+times 4 dw 61, 54
+times 4 dw 46, 38
+times 4 dw 31, 22
+times 4 dw 13, 4
 
-pw_90_82: times 4 dw 90, 82
-pw_67_46: times 4 dw 67, 46
-pw_22_m4: times 4 dw 22, -4
-pw_m31_m54: times 4 dw -31, -54
-pw_m73_m85: times 4 dw -73, -85
-pw_m90_m88: times 4 dw -90, -88
-pw_m78_m61: times 4 dw -78, -61
-pw_m38_m13: times 4 dw -38, -13
+trans_coeff32_1: times 4 dw 90, 82
+times 4 dw 67, 46
+times 4 dw 22, -4
+times 4 dw -31, -54
+times 4 dw -73, -85
+times 4 dw -90, -88
+times 4 dw -78, -61
+times 4 dw -38, -13
 
-pw_88_67: times 4 dw 88, 67
-pw_31_m13: times 4 dw 31, -13
-pw_m54_m82: times 4 dw -54, -82
-pw_m90_m78: times 4 dw -90, -78
-pw_m46_m4: times 4 dw -46, -4
-pw_38_73: times 4 dw 38, 73
-pw_90_85: times 4 dw 90, 85
-pw_61_22: times 4 dw 61, 22
+trans_coeff32_2: times 4 dw 88, 67
+times 4 dw 31, -13
+times 4 dw -54, -82
+times 4 dw -90, -78
+times 4 dw -46, -4
+times 4 dw 38, 73
+times 4 dw 90, 85
+times 4 dw 61, 22
 
-pw_85_46: times 4 dw 85, 46
-pw_m13_m67: times 4 dw -13, -67
-pw_m90_m73: times 4 dw -90, -73
-pw_m22_38: times 4 dw -22, 38
-pw_82_88: times 4 dw 82, 88
-pw_54_m4: times 4 dw 54, -4
-pw_m61_m90: times 4 dw -61, -90
-pw_m78_m31: times 4 dw -78, -31
+trans_coeff32_3: times 4 dw 85, 46
+times 4 dw -13, -67
+times 4 dw -90, -73
+times 4 dw -22, 38
+times 4 dw 82, 88
+times 4 dw 54, -4
+times 4 dw -61, -90
+times 4 dw -78, -31
 
-pw_82_22: times 4 dw 82, 22
-pw_m54_m90: times 4 dw -54, -90
-pw_m61_13: times 4 dw -61, 13
-pw_78_85: times 4 dw 78, 85
-pw_31_m46: times 4 dw 31, -46
-pw_m90_m67: times 4 dw -90, -67
-pw_4_73: times 4 dw 4, 73
-pw_88_38: times 4 dw 88, 38
+trans_coeff32_4: times 4 dw 82, 22
+times 4 dw -54, -90
+times 4 dw -61, 13
+times 4 dw 78, 85
+times 4 dw 31, -46
+times 4 dw -90, -67
+times 4 dw 4, 73
+times 4 dw 88, 38
 
-pw_78_m4: times 4 dw 78, -4
-pw_m82_m73: times 4 dw -82, -73
-pw_13_85: times 4 dw 13, 85
-pw_67_m22: times 4 dw 67, -22
-pw_m88_m61: times 4 dw -88, -61
-pw_31_90: times 4 dw 31, 90
-pw_54_m38: times 4 dw 54, -38
-pw_m90_m46: times 4 dw -90, -46
+trans_coeff32_5: times 4 dw 78, -4
+times 4 dw -82, -73
+times 4 dw 13, 85
+times 4 dw 67, -22
+times 4 dw -88, -61
+times 4 dw 31, 90
+times 4 dw 54, -38
+times 4 dw -90, -46
 
-pw_73_m31: times 4 dw 73, -31
-pw_m90_m22: times 4 dw -90, -22
-pw_78_67: times 4 dw 78, 67
-pw_m38_m90: times 4 dw -38, -90
-pw_m13_82: times 4 dw -13, 82
-pw_61_m46: times 4 dw 61, -46
-pw_m88_m4: times 4 dw -88, -4
-pw_85_54: times 4 dw 85, 54
+trans_coeff32_6: times 4 dw 73, -31
+times 4 dw -90, -22
+times 4 dw 78, 67
+times 4 dw -38, -90
+times 4 dw -13, 82
+times 4 dw 61, -46
+times 4 dw -88, -4
+times 4 dw 85, 54
 
-pw_67_m54: times 4 dw 67, -54
-pw_m78_38: times 4 dw -78, 38
-pw_85_m22: times 4 dw 85, -22
-pw_m90_4: times 4 dw -90, 4
-pw_90_13: times 4 dw 90, 13
-pw_m88_m31: times 4 dw -88, -31
-pw_82_46: times 4 dw 82, 46
-pw_m73_m61: times 4 dw -73, -61
+trans_coeff32_7: times 4 dw 67, -54
+times 4 dw -78, 38
+times 4 dw 85, -22
+times 4 dw -90, 4
+times 4 dw 90, 13
+times 4 dw -88, -31
+times 4 dw 82, 46
+times 4 dw -73, -61
 
-pw_61_m73: times 4 dw 61, -73
-pw_m46_82: times 4 dw -46, 82
-pw_31_m88: times 4 dw 31, -88
-pw_m13_90: times 4 dw -13, 90
-pw_m4_m90: times 4 dw -4, -90
-pw_22_85: times 4 dw 22, 85
-pw_m38_m78: times 4 dw -38, -78
-pw_54_67: times 4 dw 54, 67
+trans_coeff32_8: times 4 dw 61, -73
+times 4 dw -46, 82
+times 4 dw 31, -88
+times 4 dw -13, 90
+times 4 dw -4, -90
+times 4 dw 22, 85
+times 4 dw -38, -78
+times 4 dw 54, 67
 
-pw_54_m85: times 4 dw 54, -85
-pw_m4_88: times 4 dw -4, 88
-pw_m46_m61: times 4 dw -46, -61
-pw_82_13: times 4 dw 82, 13
-pw_m90_38: times 4 dw -90, 38
-pw_67_m78: times 4 dw 67, -78
-pw_m22_90: times 4 dw -22, 90
-pw_m31_m73: times 4 dw -31, -73
+trans_coeff32_9: times 4 dw 54, -85
+times 4 dw -4, 88
+times 4 dw -46, -61
+times 4 dw 82, 13
+times 4 dw -90, 38
+times 4 dw 67, -78
+times 4 dw -22, 90
+times 4 dw -31, -73
 
-pw_46_m90: times 4 dw 46, -90
-pw_38_54: times 4 dw 38, 54
-pw_m90_31: times 4 dw -90, 31
-pw_61_m88: times 4 dw 61, -88
-pw_22_67: times 4 dw 22, 67
-pw_m85_13: times 4 dw -85, 13
-pw_73_m82: times 4 dw 73, -82
-pw_4_78: times 4 dw 4, 78
+trans_coeff32_10: times 4 dw 46, -90
+times 4 dw 38, 54
+times 4 dw -90, 31
+times 4 dw 61, -88
+times 4 dw 22, 67
+times 4 dw -85, 13
+times 4 dw 73, -82
+times 4 dw 4, 78
 
-pw_38_m88: times 4 dw 38, -88
-pw_73_m4: times 4 dw 73, -4
-pw_m67_90: times 4 dw -67, 90
-pw_m46_m31: times 4 dw -46, -31
-pw_85_m78: times 4 dw 85, -78
-pw_13_61: times 4 dw 13, 61
-pw_m90_54: times 4 dw -90, 54
-pw_22_m82: times 4 dw 22, -82
+trans_coeff32_11: times 4 dw 38, -88
+times 4 dw 73, -4
+times 4 dw -67, 90
+times 4 dw -46, -31
+times 4 dw 85, -78
+times 4 dw 13, 61
+times 4 dw -90, 54
+times 4 dw 22, -82
 
-pw_31_m78: times 4 dw 31, -78
-pw_90_m61: times 4 dw 90, -61
-pw_4_54: times 4 dw 4, 54
-pw_m88_82: times 4 dw -88, 82
-pw_m38_m22: times 4 dw -38, -22
-pw_73_m90: times 4 dw 73, -90
-pw_67_m13: times 4 dw 67, -13
-pw_m46_85: times 4 dw -46, 85
+trans_coeff32_12: times 4 dw 31, -78
+times 4 dw 90, -61
+times 4 dw 4, 54
+times 4 dw -88, 82
+times 4 dw -38, -22
+times 4 dw 73, -90
+times 4 dw 67, -13
+times 4 dw -46, 85
 
-pw_22_m61: times 4 dw 22, -61
-pw_85_m90: times 4 dw 85, -90
-pw_73_m38: times 4 dw 73, -38
-pw_m4_46: times 4 dw -4, 46
-pw_m78_90: times 4 dw -78, 90
-pw_m82_54: times 4 dw -82, 54
-pw_m13_m31: times 4 dw -13, -31
-pw_67_m88: times 4 dw 67, -88
+trans_coeff32_13: times 4 dw 22, -61
+times 4 dw 85, -90
+times 4 dw 73, -38
+times 4 dw -4, 46
+times 4 dw -78, 90
+times 4 dw -82, 54
+times 4 dw -13, -31
+times 4 dw 67, -88
 
-pw_13_m38: times 4 dw 13, -38
-pw_61_m78: times 4 dw 61, -78
-pw_88_m90: times 4 dw 88, -90
-pw_85_m73: times 4 dw 85, -73
-pw_54_m31: times 4 dw 54, -31
-pw_4_22: times 4 dw 4, 22
-pw_m46_67: times 4 dw -46, 67
-pw_m82_90: times 4 dw -82, 90
+trans_coeff32_14: times 4 dw 13, -38
+times 4 dw 61, -78
+times 4 dw 88, -90
+times 4 dw 85, -73
+times 4 dw 54, -31
+times 4 dw 4, 22
+times 4 dw -46, 67
+times 4 dw -82, 90
 
-pw_4_m13: times 4 dw 4, -13
-pw_22_m31: times 4 dw 22, -31
-pw_38_m46: times 4 dw 38, -46
-pw_54_m61: times 4 dw 54, -61
-pw_67_m73: times 4 dw 67, -73
-pw_78_m82: times 4 dw 78, -82
-pw_85_m88: times 4 dw 85, -88
-pw_90_m90: times 4 dw 90, -90
+trans_coeff32_15: times 4 dw 4, -13
+times 4 dw 22, -31
+times 4 dw 38, -46
+times 4 dw 54, -61
+times 4 dw 67, -73
+times 4 dw 78, -82
+times 4 dw 85, -88
+times 4 dw 90, -90
 
 section .text
 
@@ -339,7 +370,6 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     RET
 %endmacro
 
-
 ; store intermedite e16 coeffs on stack
 ; as 8x4 matrix - writes 128 bytes to stack
 ; from m10: e8 + o8, with %1 offset
@@ -355,7 +385,6 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
 ; from %5: e8/16 + o8/16, with %1 offset                  ...
 ; and  %3: e8/16 - o8/16, with %2 offset           6 e8[1] - o8[1]
 ; %4 - shift                                       7 e8[0] - o8[0] --> + %2
-; %6 - add
 %macro STORE_8 5
     psrad    %5, %4
     psrad    %3, %4
@@ -415,15 +444,6 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     E8_O8 %1, %2, [pw_18_m50], [pw_75_m89],  %5 * 3, %5 * 4, m3, %6
 %endmacro
 
-%macro STORE_BLOCK 9
-    packssdw %2, %3
-    movq     [coeffsq + %9 + %1], %2
-    movhps   [coeffsq + %6 + %1], %2
-    packssdw %4, %5
-    movq     [coeffsq + %7 + %1], %4
-    movhps   [coeffsq + %8 + %1], %4
-%endmacro
-
 %macro STORE_PACKED 7
     movq     [coeffsq + %3 + %7], %1
     movhps   [coeffsq + %4 + %7], %1
@@ -437,12 +457,6 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 14, 14, coeffs
     SBUTTERFLY wd, 4, 5, 8
     SBUTTERFLY dq, 4, 5, 8
 %endmacro
-
-; load block i and store it in m6, m7
-; load block j to m4, m5 transpose it
-; store block j
-; swap register names with the block i and transpose the block
-; store block i
 
 ; %1 - horizontal offset of the block i
 ; %2 - vertical offset of the block i
@@ -507,107 +521,59 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 14, 14, coeffs
     RET
 %endmacro
 
-; %8 -  e16 + o16 offset
-; %9 - e16 - o16 offset
-; %10 - shift
-; %11 - add
-%macro E16_O16 12
-    %1 m1, m2
-    %2 m1, m3
-    %3 m1, m4
-    %4 m1, m5
-    %5 m1, m6
-    %6 m1, m7
-    %7 m1, m8
+; %1, 2 - transform constants
+; %3, 4 - regs with interleaved coeffs
+%macro ADD 4
+    pmaddwd m8, %3, %1
+    pmaddwd m9, %4, %2
+    paddd   m8, m9
+    paddd   m10, m8
+%endmacro
 
-    movu m2, [rsp + %8]
-%if %12 == 8
-    paddd m2, %11
+; %1 ... %4 transform coeffs
+; %5, %6 offsets for storing e+o/e-o back to coeffsq
+; %7 - shift
+; %8 - add
+; %9 - block_size
+%macro E16_O16 9
+    pxor m10, m10
+    ADD %1, %2, m0, m1
+    ADD %3, %4, m2, m3
+
+    movu m4, [rsp + %5]
+%if %9 == 8
+    paddd m4, %8
 %endif
-    psubd m3, m2, m1 ; e16 - o16
-    paddd m1, m2     ; o16 + e16
-    STORE_%12 %8, %9, m3, %10, m1
+
+    paddd m5, m10, m4 ; o16 + e16
+    psubd m4, m10      ; e16 - o16
+    STORE_%9 %5, %6, m4, %7, m5
 %endmacro
 
-; multiply coeffs in    %5, %6,  %7,  %8
-; with transform coeffs %1, %2,  %3,  %4
-; store the results in  %9, %10, %11, %12
-%macro O8 12
-    pmulld %9, %5, %1
-    pmulld %10, %6, %2
-    pmulld %11, %7, %3
-    pmulld %12, %8, %4
-%endmacro
-
-; load coeffs to %2, %3, %4, %5
-; %1 - horizontal offset
-; %6, %7, %8, %9 - vertical offsets
-%macro LOAD_BLOCK_T 9
-    pmovsxwd %2, [coeffsq + %9 + %1]
-    pmovsxwd %3, [coeffsq + %6 + %1]
-    pmovsxwd %4, [coeffsq + %7 + %1]
-    pmovsxwd %5, [coeffsq + %8 + %1]
-%endmacro
-
-; %1 - horizontal offset
-; %6 - width in bytes
-; %7 - STORE 8/16
-; %9 - step: 1 for 16x16, 2 for 32x32
 %macro TR_16x4 9
-    mova m8, [pd_64]
+    mova m12, [pd_64]
 
     ; produce 8x4 matrix of e16 coeffs
     ; for 4 first rows and store it on stack (128 bytes)
     TR_8x4 %1, 7, %4, %5, %6, %8
 
     ; load 8 even rows
-    LOAD_BLOCK_T %1, m9, m10, m11, m12, %9 * 3 * %6, %9 * 5 * %6, %9 * 7 * %6, %9 * %6
-    LOAD_BLOCK_T %1, m13, m14, m15, m0, %9 * 11 * %6, %9 * 13 * %6, %9 * 15 * %6, %9 * 9 * %6
+    LOAD_BLOCK m0, m1, %9 * %6, %9 * 3 * %6, %9 * 5 * %6, %9 * 7 * %6, %1
+    LOAD_BLOCK m2, m3, %9 * 9 * %6, %9 * 11 * %6, %9 * 13 * %6, %9 * 15 * %6, %1
 
-    ; multiply src coeffs with the transform
-    ; coeffs and store the intermediate results on m1, ... , m8
-    ; calculate the residuals from the intermediate results and store
-    ; them back to [coeffsq]
+    SBUTTERFLY wd, 0, 1, 4
+    SBUTTERFLY wd, 2, 3, 4
 
-    ; o16[0]
-    O8 [pd_90], [pd_87], [pd_80], [pd_70], m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_57], [pd_43], [pd_25], [pd_9],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, paddd, paddd, paddd, paddd, paddd, paddd, 0 + %1, 15 * %6 + %1, %2, %3, %7
+    mova m7, %3
 
-    ; o16[1]
-    O8 [pd_87], [pd_57], [pd_9],  [pd_43],  m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_80], [pd_90], [pd_70], [pd_25],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, paddd, psubd, psubd, psubd, psubd, psubd, %6 + %1, 14 * %6 + %1, %2, %3, %7
-
-    ; o16[2]
-    O8 [pd_80], [pd_9],  [pd_70], [pd_87], m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_25], [pd_57], [pd_90], [pd_43], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 paddd, psubd, psubd, psubd, paddd, paddd, paddd, 2 * %6 + %1, 13 * %6 + %1, %2, %3, %7
-
-    ; o16[3]
-    O8 [pd_70], [pd_43], [pd_87], [pd_9],  m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_90], [pd_25], [pd_80], [pd_57], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, psubd, paddd, paddd, paddd, psubd, psubd, 3 * %6 + %1, 12 * %6 + %1, %2, %3, %7
-
-    ; o16[4]
-    O8 [pd_57], [pd_80], [pd_25], [pd_90],  m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_9],  [pd_87], [pd_43], [pd_70],  m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, psubd, paddd, psubd, psubd, paddd, paddd, 4 * %6 + %1, 11 * %6 + %1, %2, %3, %7
-
-    ; o16[5]
-    O8 [pd_43], [pd_90], [pd_57], [pd_25],  m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_87], [pd_70], [pd_9],  [pd_80],  m13, m14, m15, m0, m5, m6, m7, m8
-    E16_O16 psubd, paddd, paddd, psubd, paddd, paddd, psubd, 5 * %6 + %1, 10 * %6 + %1, %2, %3, %7
-
-    ; o16[6]
-    O8 [pd_25], [pd_70], [pd_90], [pd_80], m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_43], [pd_9], [pd_57],  [pd_87], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, paddd, psubd, paddd, paddd, psubd, paddd, 6 * %6 + %1, 9 * %6 + %1, %2, %3, %7
-
-    ; o16[7]
-    O8 [pd_9], [pd_25], [pd_43],  [pd_57], m9,  m10, m11, m12, m1, m2, m3, m4
-    O8 [pd_70], [pd_80], [pd_87], [pd_90], m13, m14, m15, m0,  m5, m6, m7, m8
-    E16_O16 psubd, paddd, psubd, paddd, psubd, paddd, psubd, 7 * %6 + %1, 8 * %6 + %1, %2, %3, %7
+    E16_O16 [pw_90_87], [pw_80_70], [pw_57_43], [pw_25_9],  0 + %1, 15 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_87_57], [pw_9_m43], [pw_m80_m90], [pw_m70_m25], %6 + %1, 14 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_80_9], [pw_m70_m87], [pw_m25_57], [pw_90_43], 2 * %6 + %1, 13 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_70_m43], [pw_m87_9], [pw_90_25], [pw_m80_m57], 3 * %6 + %1, 12 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_57_m80], [pw_m25_90], [pw_m9_m87], [pw_43_70], 4 * %6 + %1, 11 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_43_m90], [pw_57_25], [pw_m87_70], [pw_9_m80], 5 * %6 + %1, 10 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_25_m70], [pw_90_m80], [pw_43_9], [pw_m57_87], 6 * %6 + %1, 9 * %6 + %1, %2, m7, %7
+    E16_O16 [pw_9_m25], [pw_43_m57], [pw_70_m80], [pw_87_m90], 7 * %6 + %1, 8 * %6 + %1, %2, m7, %7
 %endmacro
 
 %macro TRANSPOSE_16x16 0
@@ -652,7 +618,6 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     TR_16x4 8, 7, [pd_64], 64, 2, 32, 8, 16, 1
     TR_16x4 16, 7, [pd_64], 64, 2, 32, 8, 16, 1
     TR_16x4 24, 7, [pd_64], 64, 2, 32, 8, 16, 1
-
     TRANSPOSE_16x16
 
     DEFINE_BIAS %1
@@ -660,46 +625,36 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     TR_16x4 8, shift, [arr_add], 64, 2, 32, 8, 16, 1
     TR_16x4 16, shift, [arr_add], 64, 2, 32, 8, 16, 1
     TR_16x4 24, shift, [arr_add], 64, 2, 32, 8, 16, 1
-
     TRANSPOSE_16x16
 
     RET
 %endmacro
 
-; %1, 2 - transform constants
-; %3, 4 - regs with interleaved coeffs
-%macro ADD 4
-    pmaddwd m8, %3, %1
-    pmaddwd m9, %4, %2
-    paddd   m8, m9
-    paddd   m10, m8
-%endmacro
-
-; %1 ... %8 transform coeffs
-; %9 stack offset for e32
-; %10, %11 offsets for storing e+o/e-o back to coeffsq
-; %11 - shift
-%macro E32_O32 11
+; %1 - transform coeffs
+; %2 - stack offset for e32
+; %2, %3 offsets for storing e+o/e-o back to coeffsq
+; %4 - shift
+%macro E32_O32 4
     pxor m10, m10
-    ADD %1, %2, m0, m1
-    ADD %3, %4, m2, m3
-    ADD %5, %6, m4, m5
-    ADD %7, %8, m6, m7
+    ADD [%1], [%1 + 16], m0, m1
+    ADD [%1 + 2 * 16], [%1 + 3 * 16], m2, m3
+    ADD [%1 + 4 * 16], [%1 + 5 * 16], m4, m5
+    ADD [%1 + 6 * 16], [%1 + 7 * 16], m6, m7
 
-    movu m11, [rsp + %9]
+    movu m11, [rsp + %2]
     paddd m11, m14
     paddd m12, m10, m11 ; o32 + e32
     psubd m11, m10      ; e32 - o32
-    STORE_8 %9, %10, m11, %11, m12
+    STORE_8 %2, %3, m11, %4, m12
 %endmacro
 
 ; %1 - horizontal offset
-; %2 - shift
+; %2 - bitdepth
 %macro TR_32x4 3
     TR_16x4 %1, 7, [pd_64], 128, 4, 64, 16, 16, 2
 
-    LOAD_BLOCK m0, m1,     64, 3 * 64,   5 * 64,  7 * 64, %1
-    LOAD_BLOCK m2, m3, 9 * 64, 11 * 64, 13 * 64, 15 * 64, %1
+    LOAD_BLOCK m0, m1,      64,  3 * 64,  5 * 64,  7 * 64, %1
+    LOAD_BLOCK m2, m3,  9 * 64, 11 * 64, 13 * 64, 15 * 64, %1
     LOAD_BLOCK m4, m5, 17 * 64, 19 * 64, 21 * 64, 23 * 64, %1
     LOAD_BLOCK m6, m7, 25 * 64, 27 * 64, 29 * 64, 31 * 64, %1
 
@@ -715,22 +670,22 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     LOAD_BIAS %2, m14
 %endif
 
-    E32_O32 [pw_90],     [pw_88_85],   [pw_82_78],   [pw_73_67],   [pw_61_54],   [pw_46_38],   [pw_31_22],   [pw_13_4],              %1, 31 * 64 + %1, shift
-    E32_O32 [pw_90_82],  [pw_67_46],   [pw_22_m4],   [pw_m31_m54], [pw_m73_m85], [pw_m90_m88], [pw_m78_m61], [pw_m38_m13],      64 + %1, 30 * 64 + %1, shift
-    E32_O32 [pw_88_67],  [pw_31_m13],  [pw_m54_m82], [pw_m90_m78], [pw_m46_m4],  [pw_38_73],   [pw_90_85],   [pw_61_22],    2 * 64 + %1, 29 * 64 + %1, shift
-    E32_O32 [pw_85_46],  [pw_m13_m67], [pw_m90_m73], [pw_m22_38],  [pw_82_88],   [pw_54_m4],   [pw_m61_m90], [pw_m78_m31],  3 * 64 + %1, 28 * 64 + %1, shift
-    E32_O32 [pw_82_22],  [pw_m54_m90], [pw_m61_13],  [pw_78_85],   [pw_31_m46],  [pw_m90_m67], [pw_4_73],    [pw_88_38],    4 * 64 + %1, 27 * 64 + %1, shift
-    E32_O32 [pw_78_m4],  [pw_m82_m73], [pw_13_85],   [pw_67_m22],  [pw_m88_m61], [pw_31_90],   [pw_54_m38],  [pw_m90_m46],  5 * 64 + %1, 26 * 64 + %1, shift
-    E32_O32 [pw_73_m31], [pw_m90_m22], [pw_78_67],   [pw_m38_m90], [pw_m13_82],  [pw_61_m46],  [pw_m88_m4],  [pw_85_54],    6 * 64 + %1, 25 * 64 + %1, shift
-    E32_O32 [pw_67_m54], [pw_m78_38],  [pw_85_m22],  [pw_m90_4],   [pw_90_13],   [pw_m88_m31], [pw_82_46],   [pw_m73_m61],  7 * 64 + %1, 24 * 64 + %1, shift
-    E32_O32 [pw_61_m73], [pw_m46_82],  [pw_31_m88],  [pw_m13_90],  [pw_m4_m90],  [pw_22_85],   [pw_m38_m78], [pw_54_67],    8 * 64 + %1, 23 * 64 + %1, shift
-    E32_O32 [pw_54_m85], [pw_m4_88],   [pw_m46_m61], [pw_82_13],   [pw_m90_38],  [pw_67_m78],  [pw_m22_90],  [pw_m31_m73],  9 * 64 + %1, 22 * 64 + %1, shift
-    E32_O32 [pw_46_m90], [pw_38_54],   [pw_m90_31],  [pw_61_m88],  [pw_22_67],   [pw_m85_13],  [pw_73_m82],  [pw_4_78],    10 * 64 + %1, 21 * 64 + %1, shift
-    E32_O32 [pw_38_m88], [pw_73_m4],   [pw_m67_90],  [pw_m46_m31], [pw_85_m78],  [pw_13_61],   [pw_m90_54],  [pw_22_m82],  11 * 64 + %1, 20 * 64 + %1, shift
-    E32_O32 [pw_31_m78], [pw_90_m61],  [pw_4_54],    [pw_m88_82],  [pw_m38_m22], [pw_73_m90],  [pw_67_m13],  [pw_m46_85],  12 * 64 + %1, 19 * 64 + %1, shift
-    E32_O32 [pw_22_m61], [pw_85_m90],  [pw_73_m38],  [pw_m4_46],   [pw_m78_90],  [pw_m82_54],  [pw_m13_m31], [pw_67_m88],  13 * 64 + %1, 18 * 64 + %1, shift
-    E32_O32 [pw_13_m38], [pw_61_m78],  [pw_88_m90],  [pw_85_m73],  [pw_54_m31],  [pw_4_22],    [pw_m46_67],  [pw_m82_90],  14 * 64 + %1, 17 * 64 + %1, shift
-    E32_O32 [pw_4_m13],  [pw_22_m31],  [pw_38_m46],  [pw_54_m61],  [pw_67_m73],  [pw_78_m82],  [pw_85_m88],  [pw_90_m90],  15 * 64 + %1, 16 * 64 + %1, shift
+    E32_O32 trans_coeff32_0,           %1, 31 * 64 + %1, shift
+    E32_O32 trans_coeff32_1,      64 + %1, 30 * 64 + %1, shift
+    E32_O32 trans_coeff32_2,  2 * 64 + %1, 29 * 64 + %1, shift
+    E32_O32 trans_coeff32_3,  3 * 64 + %1, 28 * 64 + %1, shift
+    E32_O32 trans_coeff32_4,  4 * 64 + %1, 27 * 64 + %1, shift
+    E32_O32 trans_coeff32_5,  5 * 64 + %1, 26 * 64 + %1, shift
+    E32_O32 trans_coeff32_6,  6 * 64 + %1, 25 * 64 + %1, shift
+    E32_O32 trans_coeff32_7,  7 * 64 + %1, 24 * 64 + %1, shift
+    E32_O32 trans_coeff32_8,  8 * 64 + %1, 23 * 64 + %1, shift
+    E32_O32 trans_coeff32_9,  9 * 64 + %1, 22 * 64 + %1, shift
+    E32_O32 trans_coeff32_10, 10 * 64 + %1, 21 * 64 + %1, shift
+    E32_O32 trans_coeff32_11, 11 * 64 + %1, 20 * 64 + %1, shift
+    E32_O32 trans_coeff32_12, 12 * 64 + %1, 19 * 64 + %1, shift
+    E32_O32 trans_coeff32_13, 13 * 64 + %1, 18 * 64 + %1, shift
+    E32_O32 trans_coeff32_14, 14 * 64 + %1, 17 * 64 + %1, shift
+    E32_O32 trans_coeff32_15, 15 * 64 + %1, 16 * 64 + %1, shift
 %endmacro
 
 %macro TRANSPOSE_32x32 0
