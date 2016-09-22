@@ -91,7 +91,7 @@ pw_70_m80: times 4 dw 70, -80
 pw_87_m90: times 4 dw 87, -90
 
 ; 32x32 transform coeffs
-trans_coeff32_0: times 8 dw 90
+trans_coeff32: times 8 dw 90
 times 4 dw 88, 85
 times 4 dw 82, 78
 times 4 dw 73, 67
@@ -100,7 +100,7 @@ times 4 dw 46, 38
 times 4 dw 31, 22
 times 4 dw 13, 4
 
-trans_coeff32_1: times 4 dw 90, 82
+times 4 dw 90, 82
 times 4 dw 67, 46
 times 4 dw 22, -4
 times 4 dw -31, -54
@@ -109,7 +109,7 @@ times 4 dw -90, -88
 times 4 dw -78, -61
 times 4 dw -38, -13
 
-trans_coeff32_2: times 4 dw 88, 67
+times 4 dw 88, 67
 times 4 dw 31, -13
 times 4 dw -54, -82
 times 4 dw -90, -78
@@ -118,7 +118,7 @@ times 4 dw 38, 73
 times 4 dw 90, 85
 times 4 dw 61, 22
 
-trans_coeff32_3: times 4 dw 85, 46
+times 4 dw 85, 46
 times 4 dw -13, -67
 times 4 dw -90, -73
 times 4 dw -22, 38
@@ -127,7 +127,7 @@ times 4 dw 54, -4
 times 4 dw -61, -90
 times 4 dw -78, -31
 
-trans_coeff32_4: times 4 dw 82, 22
+times 4 dw 82, 22
 times 4 dw -54, -90
 times 4 dw -61, 13
 times 4 dw 78, 85
@@ -136,7 +136,7 @@ times 4 dw -90, -67
 times 4 dw 4, 73
 times 4 dw 88, 38
 
-trans_coeff32_5: times 4 dw 78, -4
+times 4 dw 78, -4
 times 4 dw -82, -73
 times 4 dw 13, 85
 times 4 dw 67, -22
@@ -145,7 +145,7 @@ times 4 dw 31, 90
 times 4 dw 54, -38
 times 4 dw -90, -46
 
-trans_coeff32_6: times 4 dw 73, -31
+times 4 dw 73, -31
 times 4 dw -90, -22
 times 4 dw 78, 67
 times 4 dw -38, -90
@@ -154,7 +154,7 @@ times 4 dw 61, -46
 times 4 dw -88, -4
 times 4 dw 85, 54
 
-trans_coeff32_7: times 4 dw 67, -54
+times 4 dw 67, -54
 times 4 dw -78, 38
 times 4 dw 85, -22
 times 4 dw -90, 4
@@ -163,7 +163,7 @@ times 4 dw -88, -31
 times 4 dw 82, 46
 times 4 dw -73, -61
 
-trans_coeff32_8: times 4 dw 61, -73
+times 4 dw 61, -73
 times 4 dw -46, 82
 times 4 dw 31, -88
 times 4 dw -13, 90
@@ -172,7 +172,7 @@ times 4 dw 22, 85
 times 4 dw -38, -78
 times 4 dw 54, 67
 
-trans_coeff32_9: times 4 dw 54, -85
+times 4 dw 54, -85
 times 4 dw -4, 88
 times 4 dw -46, -61
 times 4 dw 82, 13
@@ -181,7 +181,7 @@ times 4 dw 67, -78
 times 4 dw -22, 90
 times 4 dw -31, -73
 
-trans_coeff32_10: times 4 dw 46, -90
+times 4 dw 46, -90
 times 4 dw 38, 54
 times 4 dw -90, 31
 times 4 dw 61, -88
@@ -190,7 +190,7 @@ times 4 dw -85, 13
 times 4 dw 73, -82
 times 4 dw 4, 78
 
-trans_coeff32_11: times 4 dw 38, -88
+times 4 dw 38, -88
 times 4 dw 73, -4
 times 4 dw -67, 90
 times 4 dw -46, -31
@@ -199,7 +199,7 @@ times 4 dw 13, 61
 times 4 dw -90, 54
 times 4 dw 22, -82
 
-trans_coeff32_12: times 4 dw 31, -78
+times 4 dw 31, -78
 times 4 dw 90, -61
 times 4 dw 4, 54
 times 4 dw -88, 82
@@ -208,7 +208,7 @@ times 4 dw 73, -90
 times 4 dw 67, -13
 times 4 dw -46, 85
 
-trans_coeff32_13: times 4 dw 22, -61
+times 4 dw 22, -61
 times 4 dw 85, -90
 times 4 dw 73, -38
 times 4 dw -4, 46
@@ -217,7 +217,7 @@ times 4 dw -82, 54
 times 4 dw -13, -31
 times 4 dw 67, -88
 
-trans_coeff32_14: times 4 dw 13, -38
+times 4 dw 13, -38
 times 4 dw 61, -78
 times 4 dw 88, -90
 times 4 dw 85, -73
@@ -226,7 +226,7 @@ times 4 dw 4, 22
 times 4 dw -46, 67
 times 4 dw -82, 90
 
-trans_coeff32_15: times 4 dw 4, -13
+times 4 dw 4, -13
 times 4 dw 22, -31
 times 4 dw 38, -46
 times 4 dw 54, -61
@@ -351,10 +351,10 @@ cglobal hevc_idct_%1x%1_dc_%2, 1, 2, 1, coeff, tmp
 ; %3, %4, %5, %6 - vertical offsets
 ; %7 - horizontal offset
 %macro LOAD_BLOCK 7
-    movq   %1, [coeffsq + %3 + %7]
-    movhps %1, [coeffsq + %5 + %7]
-    movq   %2, [coeffsq + %4 + %7]
-    movhps %2, [coeffsq + %6 + %7]
+    movq   %1, [r0q + %3 + %7]
+    movhps %1, [r0q + %5 + %7]
+    movq   %2, [r0q + %4 + %7]
+    movhps %2, [r0q + %6 + %7]
 %endmacro
 
 ; void ff_hevc_idct_4x4__{8,10}_<opt>(int16_t *coeffs, int col_limit)
@@ -372,27 +372,17 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 1, 5, coeffs
     RET
 %endmacro
 
-; store intermedite e16 coeffs on stack
-; as 8x4 matrix - writes 128 bytes to stack
-; from m10: e8 + o8, with %1 offset
-; and  %3:  e8 - o8, with %2 offset
-; %4 - shift, unused here
-%macro STORE_16 5
-    movu    [rsp + %1], %5
-    movu    [rsp + %2], %3
-%endmacro
-
 ; scale, pack (clip16) and store the residuals     0 e8[0] + o8[0] --> + %1
 ; 4 at one time (4 columns)                        1 e8[1] + o8[1]
 ; from %5: e8/16 + o8/16, with %1 offset                  ...
 ; and  %3: e8/16 - o8/16, with %2 offset           6 e8[1] - o8[1]
 ; %4 - shift                                       7 e8[0] - o8[0] --> + %2
-%macro STORE_8 5
+%macro STORE_8 7
     psrad    %5, %4
     psrad    %3, %4
-    packssdw  %5, %3
-    movq      [coeffsq + %1], %5
-    movhps    [coeffsq + %2], %5
+    packssdw %5, %3
+    movq     [coeffsq + %1], %5
+    movhps   [coeffsq + %2], %5
 %endmacro
 
 ; %1 - horizontal offset
@@ -402,19 +392,21 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 1, 5, coeffs
 ; %6 - vertical offset for e8 - o8
 ; %7 - register with e8 inside
 ; %8 - block_size
+; %9 - register to store e8 +o8
+; %10 - register to store e8 - o8
 %macro E8_O8 10
     pmaddwd m6, m4, %3
     pmaddwd m7, m5, %4
-    paddd m6, m7
+    paddd   m6, m7
 
     paddd m7, m6, %7 ; o8 + e8
     psubd %7, m6     ; e8 - o8
-    %if %8 == 8
-    STORE_8 %5 + %1, %6 + %1, %7, %2, m7
-    %else
+%if %8 == 8
+    STORE_8 %5 + %1, %6 + %1, %7, %2, m7, 0, 0
+%else
     SWAP m7, %9
     SWAP %7, %10
-    %endif
+%endif
 %endmacro
 
 ; 8x4 residuals are processed and stored
@@ -450,10 +442,10 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 1, 5, coeffs
 %endmacro
 
 %macro STORE_PACKED 7
-    movq     [coeffsq + %3 + %7], %1
-    movhps   [coeffsq + %4 + %7], %1
-    movq     [coeffsq + %5 + %7], %2
-    movhps   [coeffsq + %6 + %7], %2
+    movq     [r0q + %3 + %7], %1
+    movhps   [r0q + %4 + %7], %1
+    movq     [r0q + %5 + %7], %2
+    movhps   [r0q + %6 + %7], %2
 %endmacro
 
 ; transpose 4x4 block packed
@@ -487,7 +479,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 1, 5, coeffs
 %endmacro
 
 ; %1 - horizontal offset
-; %2 - 2 - vertical offset of the block
+; %2 - vertical offset of the block
 ; %3 - width in bytes
 %macro TRANSPOSE_BLOCK 3
     LOAD_BLOCK m4, m5, %2, %2 + %3, %2 + 2 * %3, %2 + 3 * %3, %1
@@ -512,7 +504,7 @@ cglobal hevc_idct_4x4_ %+ %1, 1, 1, 5, coeffs
 ; void ff_hevc_idct_8x8_{8,10}_<opt>(int16_t *coeffs, int col_limit)
 ; %1 = bitdepth
 %macro IDCT_8x8 1
-cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
+cglobal hevc_idct_8x8_ %+ %1, 1, 1, 8, coeffs
     TR_8x4 0, 7, 32, 1, 16, 8, 1
     TR_8x4 8, 7, 32, 1, 16, 8, 1
 
@@ -527,18 +519,30 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
     RET
 %endmacro
 
+; store intermedite e32 coeffs on stack
+; as 16x4 matrix
+; from m10: e8 + o8, with %6 offset
+; and  %3:  e8 - o8, with %7 offset
+; %4 - shift, unused here
+%macro STORE_16 7
+    mova    [rsp + %6], %5
+    mova    [rsp + %7], %3
+%endmacro
+
 ; %1, %2 - transform constants
 ; %3, %4 - regs with interleaved coeffs
-; %6, %7, %8
+; %5 - 1/0 SWAP or add
+; %6, %7 - registers for intermidiate sums
+; %8 - accumulator register
 %macro ADD_ROWS 8
     pmaddwd %6, %3, %1
     pmaddwd %7, %4, %2
     paddd   %6, %7
-    %if %5 == 1
+%if %5 == 1
     SWAP %6, %8
-    %else
-    paddd   %8, %6
-    %endif
+%else
+    paddd %8, %6
+%endif
 %endmacro
 
 ; %1 ... %4 transform coeffs
@@ -546,8 +550,9 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
 ; %7 - shift
 ; %8 - add
 ; %9 - block_size
-; %10
-%macro E16_O16 10
+; %10 - register with e16
+; %11, %12 - stack offsets for storing e+o/e-o
+%macro E16_O16 12
     ADD_ROWS %1, %2, m0, m1, 1, m5, m6, m7
     ADD_ROWS %3, %4, m2, m3, 0, m5, m6, m7
 
@@ -556,8 +561,8 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
 %endif
 
     paddd m4, m7, %10 ; o16 + e16
-    psubd %10, m7      ; e16 - o16
-    STORE_%9 %5, %6, %10, %7, m4
+    psubd %10, m7     ; e16 - o16
+    STORE_%9 %5, %6, %10, %7, m4, %11, %12
 %endmacro
 
 %macro TR_16x4 9
@@ -572,15 +577,15 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
     SBUTTERFLY wd, 0, 1, 4
     SBUTTERFLY wd, 2, 3, 4
 
-    E16_O16 [pw_90_87], [pw_80_70], [pw_57_43], [pw_25_9],  0 + %1, 15 * %6 + %1, %2, %3, %7, m8
+    E16_O16 [pw_90_87], [pw_80_70], [pw_57_43], [pw_25_9],  0 + %1,         15 * %6 + %1, %2, %3, %7, m8, 0,      15 * 16
     mova m8, %3
-    E16_O16 [pw_87_57], [pw_9_m43], [pw_m80_m90], [pw_m70_m25], %6 + %1, 14 * %6 + %1, %2, m8, %7, m9
-    E16_O16 [pw_80_9], [pw_m70_m87], [pw_m25_57], [pw_90_43], 2 * %6 + %1, 13 * %6 + %1, %2, m8, %7, m10
-    E16_O16 [pw_70_m43], [pw_m87_9], [pw_90_25], [pw_m80_m57], 3 * %6 + %1, 12 * %6 + %1, %2, m8, %7, m11
-    E16_O16 [pw_57_m80], [pw_m25_90], [pw_m9_m87], [pw_43_70], 4 * %6 + %1, 11 * %6 + %1, %2, m8, %7, m12
-    E16_O16 [pw_43_m90], [pw_57_25], [pw_m87_70], [pw_9_m80], 5 * %6 + %1, 10 * %6 + %1, %2, m8, %7, m13
-    E16_O16 [pw_25_m70], [pw_90_m80], [pw_43_9], [pw_m57_87], 6 * %6 + %1, 9 * %6 + %1, %2, m8, %7, m14
-    E16_O16 [pw_9_m25], [pw_43_m57], [pw_70_m80], [pw_87_m90], 7 * %6 + %1, 8 * %6 + %1, %2, m8, %7, m15
+    E16_O16 [pw_87_57], [pw_9_m43], [pw_m80_m90], [pw_m70_m25], %6 + %1,    14 * %6 + %1, %2, m8, %7, m9, 16,      14 * 16
+    E16_O16 [pw_80_9], [pw_m70_m87], [pw_m25_57], [pw_90_43], 2 * %6 + %1,  13 * %6 + %1, %2, m8, %7, m10, 2 * 16, 13 * 16
+    E16_O16 [pw_70_m43], [pw_m87_9], [pw_90_25], [pw_m80_m57], 3 * %6 + %1, 12 * %6 + %1, %2, m8, %7, m11, 3 * 16, 12 * 16
+    E16_O16 [pw_57_m80], [pw_m25_90], [pw_m9_m87], [pw_43_70], 4 * %6 + %1, 11 * %6 + %1, %2, m8, %7, m12, 4 * 16, 11 * 16
+    E16_O16 [pw_43_m90], [pw_57_25], [pw_m87_70], [pw_9_m80], 5 * %6 + %1,  10 * %6 + %1, %2, m8, %7, m13, 5 * 16, 10 * 16
+    E16_O16 [pw_25_m70], [pw_90_m80], [pw_43_9], [pw_m57_87], 6 * %6 + %1,  9 * %6 + %1, %2, m8, %7, m14,  6 * 16, 9 * 16
+    E16_O16 [pw_9_m25], [pw_43_m57], [pw_70_m80], [pw_87_m90], 7 * %6 + %1, 8 * %6 + %1, %2, m8, %7, m15,  7 * 16, 8 * 16
 %endmacro
 
 %macro TRANSPOSE_16x16 0
@@ -620,39 +625,57 @@ cglobal hevc_idct_8x8_ %+ %1, 1, 1, 9, coeffs
 ; void ff_hevc_idct_16x16_{8,10}_<opt>(int16_t *coeffs, int col_limit)
 ; %1 = bitdepth
 %macro IDCT_16x16 1
-cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
-    TR_16x4 0, 7, [pd_64], 64, 2, 32, 8, 16, 1
-    TR_16x4 8, 7, [pd_64], 64, 2, 32, 8, 16, 1
-    TR_16x4 16, 7, [pd_64], 64, 2, 32, 8, 16, 1
-    TR_16x4 24, 7, [pd_64], 64, 2, 32, 8, 16, 1
+cglobal hevc_idct_16x16_ %+ %1, 1, 3, 15, coeffs
+    mov r1, 4
+.loop16:
+    TR_16x4 (8 * r1 - 8), 7, [pd_64], 64, 2, 32, 8, 16, 1
+    dec r1
+    jg .loop16
     TRANSPOSE_16x16
 
     DEFINE_BIAS %1
-    TR_16x4 0, shift, [arr_add], 64, 2, 32, 8, 16, 1
-    TR_16x4 8, shift, [arr_add], 64, 2, 32, 8, 16, 1
-    TR_16x4 16, shift, [arr_add], 64, 2, 32, 8, 16, 1
-    TR_16x4 24, shift, [arr_add], 64, 2, 32, 8, 16, 1
+    mov r1, 4
+.loop16_2:
+    TR_16x4 (8 * r1 - 8), shift, [arr_add], 64, 2, 32, 8, 16, 1
+    dec r1
+    jg .loop16_2
     TRANSPOSE_16x16
 
     RET
+%endmacro
+
+; scale, pack (clip16) and store the residuals     0 e32[0] + o32[0] --> %1
+; 4 at one time (4 columns)                        1 e32[1] + o32[1]
+; %1 - address to store e32 + o32
+; %2 - address to store e32 - e32
+; %5 - reg with e32 + o32                                  ...
+; %3 - reg with e32 - o32                          30 e32[1] - o32[1]
+; %4 - shift                                       31 e32[0] - o32[0] --> %2
+%macro STORE_32 5
+    psrad    %5, %4
+    psrad    %3, %4
+    packssdw %5, %3
+    movq     [%1], %5
+    movhps   [%2], %5
 %endmacro
 
 ; %1 - transform coeffs
 ; %2 - stack offset for e32
 ; %2, %3 offsets for storing e+o/e-o back to coeffsq
 ; %4 - shift
-%macro E32_O32 4
+; %5 - stack offset of e32
+%macro E32_O32 5
     pxor m10, m10
     ADD_ROWS [%1], [%1 + 16], m0, m1, 1, m8, m9, m10
     ADD_ROWS [%1 + 2 * 16], [%1 + 3 * 16], m2, m3, 0, m8, m9, m10
     ADD_ROWS [%1 + 4 * 16], [%1 + 5 * 16], m4, m5, 0, m8, m9, m10
     ADD_ROWS [%1 + 6 * 16], [%1 + 7 * 16], m6, m7, 0, m8, m9, m10
 
-    movu m11, [rsp + %2]
+    mova m11, [rsp + %5]
     paddd m11, m14
     paddd m12, m10, m11 ; o32 + e32
     psubd m11, m10      ; e32 - o32
-    STORE_8 %2, %3, m11, %4, m12
+    STORE_32 %2, %3, m11, %4, m12
 %endmacro
 
 ; %1 - horizontal offset
@@ -677,25 +700,23 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     LOAD_BIAS %2, m14
 %endif
 
-    E32_O32 trans_coeff32_0,           %1, 31 * 64 + %1, shift
-    E32_O32 trans_coeff32_1,      64 + %1, 30 * 64 + %1, shift
-    E32_O32 trans_coeff32_2,  2 * 64 + %1, 29 * 64 + %1, shift
-    E32_O32 trans_coeff32_3,  3 * 64 + %1, 28 * 64 + %1, shift
-    E32_O32 trans_coeff32_4,  4 * 64 + %1, 27 * 64 + %1, shift
-    E32_O32 trans_coeff32_5,  5 * 64 + %1, 26 * 64 + %1, shift
-    E32_O32 trans_coeff32_6,  6 * 64 + %1, 25 * 64 + %1, shift
-    E32_O32 trans_coeff32_7,  7 * 64 + %1, 24 * 64 + %1, shift
-    E32_O32 trans_coeff32_8,  8 * 64 + %1, 23 * 64 + %1, shift
-    E32_O32 trans_coeff32_9,  9 * 64 + %1, 22 * 64 + %1, shift
-    E32_O32 trans_coeff32_10, 10 * 64 + %1, 21 * 64 + %1, shift
-    E32_O32 trans_coeff32_11, 11 * 64 + %1, 20 * 64 + %1, shift
-    E32_O32 trans_coeff32_12, 12 * 64 + %1, 19 * 64 + %1, shift
-    E32_O32 trans_coeff32_13, 13 * 64 + %1, 18 * 64 + %1, shift
-    E32_O32 trans_coeff32_14, 14 * 64 + %1, 17 * 64 + %1, shift
-    E32_O32 trans_coeff32_15, 15 * 64 + %1, 16 * 64 + %1, shift
+    mov r2, 16
+    mov r3, trans_coeff32
+    mov r4, coeffsq
+    mov r5, 0
+    mov r6, coeffsq
+    add r6, 31 * 64
+.loopE32_%3
+    E32_O32 r3, r4 + %1, r6 + %1, shift, r5
+    sub r6, 64
+    add r5, 16
+    add r4, 64
+    add r3, 128
+    dec r2
+    jg .loopE32_%3
 %endmacro
 
-%macro TRANSPOSE_32x32 0
+transpose_32x32:
     ; M0  M1 ... M7
     ; M8         M15
     ;
@@ -704,40 +725,57 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     ; M56        M63
 
     TRANSPOSE_BLOCK 0, 0, 64 ; M1
-
-    SWAP_BLOCKS 0,     256, 64, 0,     8 ; M8,  M1
-    SWAP_BLOCKS 0, 2 * 256, 64, 0, 2 * 8 ; M16, M2
-    SWAP_BLOCKS 0, 3 * 256, 64, 0, 3 * 8 ; M24, M3
-    SWAP_BLOCKS 0, 4 * 256, 64, 0, 4 * 8
-    SWAP_BLOCKS 0, 5 * 256, 64, 0, 5 * 8
-    SWAP_BLOCKS 0, 6 * 256, 64, 0, 6 * 8
-    SWAP_BLOCKS 0, 7 * 256, 64, 0, 7 * 8
+    mov r1, 7
+    mov r2, 7 * 256
+.loop_transpose
+    SWAP_BLOCKS 0, r2, 64, 0, r1 * 8
+    sub r2, 256
+    dec r1
+    jg .loop_transpose
 
     TRANSPOSE_BLOCK 8, 256, 64 ; M9
-    SWAP_BLOCKS 8, 2 * 256, 64, 256, 2 * 8 ; M17, M10
-    SWAP_BLOCKS 8, 3 * 256, 64, 256, 3 * 8
-    SWAP_BLOCKS 8, 4 * 256, 64, 256, 4 * 8
-    SWAP_BLOCKS 8, 5 * 256, 64, 256, 5 * 8
-    SWAP_BLOCKS 8, 6 * 256, 64, 256, 6 * 8
-    SWAP_BLOCKS 8, 7 * 256, 64, 256, 7 * 8
+    mov r1, 6
+    mov r2, 512
+    mov r3, 16
+.loop_transpose2
+    SWAP_BLOCKS 8, r2, 64, 256, r3
+    add r3, 8
+    add r2, 256
+    dec r1
+    jg .loop_transpose2
 
     TRANSPOSE_BLOCK 2 * 8, 2 * 256, 64 ; M9
-    SWAP_BLOCKS 2 * 8, 3 * 256, 64, 2 * 256, 3 * 8
-    SWAP_BLOCKS 2 * 8, 4 * 256, 64, 2 * 256, 4 * 8
-    SWAP_BLOCKS 2 * 8, 5 * 256, 64, 2 * 256, 5 * 8
-    SWAP_BLOCKS 2 * 8, 6 * 256, 64, 2 * 256, 6 * 8
-    SWAP_BLOCKS 2 * 8, 7 * 256, 64, 2 * 256, 7 * 8
+    mov r1, 5
+    mov r2, 768
+    mov r3, 24
+.loop_transpose3
+    SWAP_BLOCKS 2 * 8, r2, 64, 2 * 256, r3
+    add r3, 8
+    add r2, 256
+    dec r1
+    jg .loop_transpose3
 
     TRANSPOSE_BLOCK 3 * 8, 3 * 256, 64 ; M27
-    SWAP_BLOCKS 3 * 8, 4 * 256, 64, 3 * 256, 4 * 8
-    SWAP_BLOCKS 3 * 8, 5 * 256, 64, 3 * 256, 5 * 8
-    SWAP_BLOCKS 3 * 8, 6 * 256, 64, 3 * 256, 6 * 8
-    SWAP_BLOCKS 3 * 8, 7 * 256, 64, 3 * 256, 7 * 8
+    mov r1, 4
+    mov r2, 1024
+    mov r3, 32
+.loop_transpose4
+    SWAP_BLOCKS 3 * 8, r2, 64, 3 * 256, r3
+    add r3, 8
+    add r2, 256
+    dec r1
+    jg .loop_transpose4
 
     TRANSPOSE_BLOCK 4 * 8, 4 * 256, 64 ; M36
-    SWAP_BLOCKS 4 * 8, 5 * 256, 64, 4 * 256, 5 * 8
-    SWAP_BLOCKS 4 * 8, 6 * 256, 64, 4 * 256, 6 * 8
-    SWAP_BLOCKS 4 * 8, 7 * 256, 64, 4 * 256, 7 * 8
+    mov r1, 3
+    mov r2, 1280
+    mov r3, 40
+.loop_transpose5
+    SWAP_BLOCKS 4 * 8, r2, 64, 4 * 256, r3
+    add r3, 8
+    add r2, 256
+    dec r1
+    jg .loop_transpose5
 
     TRANSPOSE_BLOCK 5 * 8, 5 * 256, 64 ; M45
     SWAP_BLOCKS 5 * 8, 6 * 256, 64, 5 * 256, 6 * 8
@@ -747,33 +785,28 @@ cglobal hevc_idct_16x16_ %+ %1, 1, 1, 15, 1024, coeffs
     SWAP_BLOCKS 6 * 8, 7 * 256, 64, 6 * 256, 7 * 8
 
     TRANSPOSE_BLOCK 7 * 8, 7 * 256, 64 ; M63
-%endmacro
+
+    ret
 
 ; void ff_hevc_idct_32x32_{8,10}_<opt>(int16_t *coeffs, int col_limit)
 ; %1 = bitdepth
 %macro IDCT_32x32 1
-cglobal hevc_idct_32x32_ %+ %1, 1, 1, 15, 4096, coeffs
-    TR_32x4 0, %1, 1
-    TR_32x4 8, %1, 1
-    TR_32x4 16, %1, 1
-    TR_32x4 24, %1, 1
-    TR_32x4 32, %1, 1
-    TR_32x4 40, %1, 1
-    TR_32x4 48, %1, 1
-    TR_32x4 56, %1, 1
+cglobal hevc_idct_32x32_ %+ %1, 1, 7, 15, 512, coeffs
+    mov r1, 8
+.loop32:
+    TR_32x4 (8 * r1 - 8), %1, 1
+    dec r1
+    jg .loop32
 
-    TRANSPOSE_32x32
+    call transpose_32x32
 
-    TR_32x4 0, %1, 0
-    TR_32x4 8, %1, 0
-    TR_32x4 16, %1, 0
-    TR_32x4 24, %1, 0
-    TR_32x4 32, %1, 0
-    TR_32x4 40, %1, 0
-    TR_32x4 48, %1, 0
-    TR_32x4 56, %1, 0
+    mov r1, 8
+.loop32_2:
+    TR_32x4 (8 * r1 - 8), %1, 0
+    dec r1
+    jg .loop32_2
 
-    TRANSPOSE_32x32
+    call transpose_32x32
 
     RET
 %endmacro
@@ -789,10 +822,10 @@ IDCT_DC    16,  4,  8
 IDCT_DC    32, 16,  8
 
 INIT_XMM avx
-IDCT_4x4 8
-IDCT_8x8 8
-IDCT_16x16 8
 IDCT_32x32 8
+IDCT_16x16 8
+IDCT_8x8 8
+IDCT_4x4 8
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
@@ -811,10 +844,10 @@ IDCT_DC    16,  4, 10
 IDCT_DC    32, 16, 10
 
 INIT_XMM avx
-IDCT_4x4 10
-IDCT_8x8 10
-IDCT_16x16 10
 IDCT_32x32 10
+IDCT_16x16 10
+IDCT_8x8 10
+IDCT_4x4 10
 
 %if HAVE_AVX2_EXTERNAL
 INIT_YMM avx2
