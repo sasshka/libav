@@ -300,6 +300,10 @@ typedef struct
     void (*mbtree_fix8_unpack)( float *dst, uint16_t *src, int count );
 } x264_mc_functions_t;
 
+void x264_plane_copy_deinterleave_c( pixel *dstu, intptr_t i_dstu,
+                                     pixel *dstv, intptr_t i_dstv,
+                                     pixel *src,  intptr_t i_src, int w, int h );
+
 void x264_mc_init( int cpu, x264_mc_functions_t *pf, int cpu_independent );
 
 #endif

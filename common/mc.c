@@ -325,7 +325,7 @@ void x264_plane_copy_interleave_c( pixel *dst,  intptr_t i_dst,
         }
 }
 
-static void x264_plane_copy_deinterleave_c( pixel *dstu, intptr_t i_dstu,
+void x264_plane_copy_deinterleave_c( pixel *dstu, intptr_t i_dstu,
                                             pixel *dstv, intptr_t i_dstv,
                                             pixel *src,  intptr_t i_src, int w, int h )
 {
