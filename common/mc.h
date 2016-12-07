@@ -304,6 +304,11 @@ void x264_plane_copy_deinterleave_c( pixel *dstu, intptr_t i_dstu,
                                      pixel *dstv, intptr_t i_dstv,
                                      pixel *src,  intptr_t i_src, int w, int h );
 
+void x264_plane_copy_deinterleave_rgb_c( pixel *dsta, intptr_t i_dsta,
+                                         pixel *dstb, intptr_t i_dstb,
+                                         pixel *dstc, intptr_t i_dstc,
+                                         pixel *src,  intptr_t i_src, int pw, int w, int h );
+
 void x264_mc_init( int cpu, x264_mc_functions_t *pf, int cpu_independent );
 
 #endif

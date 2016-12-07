@@ -231,6 +231,102 @@ void x264_plane_copy_deinterleave_altivec( uint8_t *dstu, intptr_t i_dstu,
     }
 }
 
+#define CALC_REM                  \
+for( int x = w_core; x < w; x++ ) \
+{                                 \
+    dsta[x] = src[x * pw];        \
+    dstb[x] = src[x * pw + 1];    \
+    dstc[x] = src[x * pw + 2];    \
+}
+
+void x264_plane_copy_deinterleave_rgb_altivec( uint8_t *dsta, intptr_t i_dsta,
+                                               uint8_t *dstb, intptr_t i_dstb,
+                                               uint8_t *dstc, intptr_t i_dstc,
+                                               uint8_t *src, intptr_t i_src,
+                                               int pw, int w, int h )
+{
+    if ( w < 16 ) {
+        x264_plane_copy_deinterleave_rgb_c( dsta, i_dsta, dstb, i_dstb, dstc, i_dstc, src, i_src, pw, w, h );
+    } else {
+        int w_core = w & ~15;
+
+        if (pw == 3) {
+            const vec_u8_t mask[6] = {
+                { 0x00, 0x03, 0x06, 0x09, 0x0C, 0x0F, 0x12, 0x15, 0x18, 0x1B, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00 },
+                { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x11, 0x14, 0x17, 0x1A, 0x1D },
+                { 0x01, 0x04, 0x07, 0x0A, 0x0D, 0x10, 0x13, 0x16, 0x19, 0x1C, 0x1F, 0x00, 0x00, 0x00, 0x00, 0x00 },
+                { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x12, 0x15, 0x18, 0x1B, 0x1E },
+                { 0x02, 0x05, 0x08, 0x0B, 0x0E, 0x11, 0x14, 0x17, 0x1A, 0x1D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+                { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x13, 0x16, 0x19, 0x1C, 0x1F }
+            };
+            for( int y = 0; y < h; y++, dsta += i_dsta, dstb += i_dstb, dstc += i_dstc, src += i_src )
+            {
+                for ( int x = 0; x < w_core; x += 16 )
+                {
+                    vec_u8_t srcv1 = vec_vsx_ld( 3 * x, src );
+                    vec_u8_t srcv2 = vec_vsx_ld( 3 * x + 16, src );
+                    vec_u8_t srcv3 = vec_vsx_ld( 3 * x + 32, src );
+                    vec_u8_t dstv = vec_perm( srcv1, srcv2, mask[0] );
+
+                    dstv = vec_perm( dstv, srcv3, mask[1] );
+                    vec_vsx_st( dstv, x, dsta );
+
+                    dstv = vec_perm( srcv1, srcv2, mask[2] );
+                    dstv = vec_perm( dstv, srcv3, mask[3] );
+                    vec_vsx_st( dstv, x, dstb );
+
+                    dstv = vec_perm( srcv1, srcv2, mask[4] );
+                    dstv = vec_perm( dstv, srcv3, mask[5] );
+                    vec_vsx_st( dstv, x, dstc );
+                }
+                CALC_REM
+            }
+        } else {
+            const vec_u8_t mask[2] = {
+                { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17 },
+                { 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F }
+            };
+            for( int y = 0; y < h; y++, dsta += i_dsta, dstb += i_dstb, dstc += i_dstc, src += i_src )
+            {
+                for ( int x = 0; x < w_core; x += 16 )
+                {
+                    vec_u8_t srcv1 = vec_vsx_ld( 4 * x, src );
+                    vec_u8_t srcv2 = vec_vsx_ld( 4 * x + 16, src );
+                    vec_u8_t srcv3 = vec_vsx_ld( 4 * x + 32, src );
+                    vec_u8_t srcv4 = vec_vsx_ld( 4 * x + 48, src );
+
+                    vec_u8_t tmp1[6], tmp2[6];
+                    vec_u8_t dstv;
+
+                    tmp1[0] = vec_mergeh( srcv1, srcv2 );
+                    tmp1[1] = vec_mergel( srcv1, srcv2 );
+                    tmp1[2] = vec_mergeh( tmp1[0], tmp1[1] );
+                    tmp1[3] = vec_mergel( tmp1[0], tmp1[1] );
+                    tmp1[4] = vec_mergeh( tmp1[2], tmp1[3] );
+                    tmp1[5] = vec_mergel( tmp1[2], tmp1[3] );
+
+                    tmp2[0] = vec_mergeh( srcv3, srcv4 );
+                    tmp2[1] = vec_mergel( srcv3, srcv4 );
+                    tmp2[2] = vec_mergeh( tmp2[0], tmp2[1] );
+                    tmp2[3] = vec_mergel( tmp2[0], tmp2[1] );
+                    tmp2[4] = vec_mergeh( tmp2[2], tmp2[3] );
+                    tmp2[5] = vec_mergel( tmp2[2], tmp2[3] );
+
+                    dstv = vec_perm( tmp1[4], tmp2[4], mask[0] );
+                    vec_vsx_st( dstv, x, dsta );
+
+                    dstv = vec_perm( tmp1[4], tmp2[4], mask[1] );
+                    vec_vsx_st( dstv, x, dstb );
+
+                    dstv = vec_perm( tmp1[5], tmp2[5], mask[0] );
+                    vec_vsx_st( dstv, x, dstc );
+                }
+                CALC_REM
+            }
+        }
+    }
+}
+
 static void mc_luma_altivec( uint8_t *dst,    intptr_t i_dst_stride,
                              uint8_t *src[4], intptr_t i_src_stride,
                              int mvx, int mvy,
@@ -1267,5 +1363,6 @@ void x264_mc_altivec_init( x264_mc_functions_t *pf )
     pf->plane_copy_interleave = x264_plane_copy_interleave_altivec;
     pf->store_interleave_chroma = x264_store_interleave_chroma_altivec;
     pf->plane_copy_deinterleave = x264_plane_copy_deinterleave_altivec;
+    pf->plane_copy_deinterleave_rgb = x264_plane_copy_deinterleave_rgb_altivec;
 #endif // !HIGH_BIT_DEPTH
 }
