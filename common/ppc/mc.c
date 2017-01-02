@@ -1343,6 +1343,86 @@ PLANE_COPY_SWAP(16, altivec)
 PLANE_INTERLEAVE(altivec)
 #endif // !HIGH_BIT_DEPTH
 
+#if HIGH_BIT_DEPTH
+
+#define LOAD_SRC( l )               \
+{                                   \
+    srcv[l] = vec_ld( s, src );     \
+    s += 16;                        \
+    srcv[l + 1] = vec_ld( s, src ); \
+    s += 16;                        \
+}
+
+#define STORE_8( mask, shift, dst, a, b )                   \
+{                                                           \
+    dstv = ( vec_u16_t )vec_perm( srcv[a], srcv[b], mask ); \
+    dstv = vec_sr( dstv, shift );                           \
+    dstv = vec_and( dstv, and_mask );                       \
+                                                            \
+    vec_st( dstv, offset, dst );                            \
+}
+
+// v210 input is only compatible with bit-depth of 10 bits
+void x264_plane_copy_deinterleave_v210_altivec( uint16_t *dsty, intptr_t i_dsty,
+                                                uint16_t *dstc, intptr_t i_dstc,
+                                                uint32_t *src, intptr_t i_src, int w, int h )
+{
+    const vec_u8_t masky[3] = {
+        { 0x01, 0x02, 0x04, 0x05, 0x06, 0x07, 0x09, 0x0A, 0x0C, 0x0D, 0x0E, 0x0F, 0x11, 0x12, 0x14, 0x15 },
+        { 0x06, 0x07, 0x09, 0x0A, 0x0C, 0x0D, 0x0E, 0x0F, 0x11, 0x12, 0x14, 0x15, 0x16, 0x17, 0x19, 0x1A },
+        { 0x0C, 0x0D, 0x0E, 0x0F, 0x11, 0x12, 0x14, 0x15, 0x16, 0x17, 0x19, 0x1A, 0x1C, 0x1D, 0x1E, 0x1F }
+    };
+    const vec_u8_t maskc[3] = {
+        { 0x00, 0x01, 0x02, 0x03, 0x05, 0x06, 0x08, 0x09, 0x0A, 0x0B, 0x0D, 0x0E, 0x10, 0x11, 0x12, 0x13 },
+        { 0x05, 0x06, 0x08, 0x09, 0x0A, 0x0B, 0x0D, 0x0E, 0x10, 0x11, 0x12, 0x13, 0x15, 0x16, 0x18, 0x19 },
+        { 0x0A, 0x0B, 0x0D, 0x0E, 0x10, 0x11, 0x12, 0x13, 0x15, 0x16, 0x18, 0x19, 0x1A, 0x1B, 0x1D, 0x1E }
+    };
+    const vec_u16_t shiftc[3] = {
+        { 0, 4, 2, 0, 4, 2, 0, 4 },
+        { 2, 0, 4, 2, 0, 4, 2, 0 },
+        { 4, 2, 0, 4, 2, 0, 4, 2 }
+    };
+
+    const vec_u16_t shifty[3] = {
+        { 2, 0, 4, 2, 0, 4, 2, 0 },
+        { 4, 2, 0, 4, 2, 0, 4, 2 },
+        { 0, 4, 2, 0, 4, 2, 0, 4 }
+    };
+
+    vec_u16_t dstv;
+    vec_u16_t and_mask = vec_sub( vec_sl( vec_splat_u16( 1 ), vec_splat_u16( 10 ) ), vec_splat_u16( 1 ) );
+    vec_u32_t srcv[4];
+
+    for( int i = 0; i < h; i++ )
+    {
+        int offset = 0;
+        int s = 0;
+
+        for( int j = 0; j < w; j += 24 )
+        {
+            LOAD_SRC( 0 );
+            STORE_8(maskc[0], shiftc[0], dstc, 0, 1);
+            STORE_8(masky[0], shifty[0], dsty, 0, 1);
+            offset += 16;
+
+            LOAD_SRC( 2 );
+            STORE_8( maskc[1], shiftc[1], dstc, 1, 2 );
+            STORE_8( masky[1], shifty[1], dsty, 1, 2 );
+            offset += 16;
+
+            STORE_8( maskc[2], shiftc[2], dstc, 2, 3 );
+            STORE_8( masky[2], shifty[2], dsty, 2, 3 );
+            offset += 16;
+        }
+
+        dsty += i_dsty;
+        dstc += i_dstc;
+        src += i_src;
+    }
+}
+
+#endif // HIGH_BIT_DEPTH
+
 void x264_mc_altivec_init( x264_mc_functions_t *pf )
 {
 #if !HIGH_BIT_DEPTH
@@ -1364,4 +1444,8 @@ void x264_mc_altivec_init( x264_mc_functions_t *pf )
     pf->plane_copy_deinterleave = x264_plane_copy_deinterleave_altivec;
     pf->plane_copy_deinterleave_rgb = x264_plane_copy_deinterleave_rgb_altivec;
 #endif // !HIGH_BIT_DEPTH
+
+#if HIGH_BIT_DEPTH
+    pf->plane_copy_deinterleave_v210 = x264_plane_copy_deinterleave_v210_altivec;
+#endif
 }
