@@ -40,10 +40,10 @@ void ff_end_tag(AVIOContext *pb, int64_t start);
 
 /**
  * Read BITMAPINFOHEADER structure and set AVStream codec width, height and
- * bits_per_encoded_sample fields. Does not read extradata.
+ * bits_per_encoded_sample fields. Writes the size of BMP file to *size. Does not read extradata.
  * @return codec tag
  */
-int ff_get_bmp_header(AVIOContext *pb, AVStream *st);
+int ff_get_bmp_header(AVIOContext *pb, AVStream *st, uint32_t *size);
 
 void ff_put_bmp_header(AVIOContext *pb, AVCodecParameters *par, const AVCodecTag *tags, int for_asf);
 int ff_put_wav_header(AVFormatContext *s, AVIOContext *pb, AVCodecParameters *par);
