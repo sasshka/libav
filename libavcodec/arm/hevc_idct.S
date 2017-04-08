@@ -315,6 +315,18 @@ endfunc
         vqrshrn.s32     \out7, \in7, \shift
 .endm
 
+.macro store_to_stack stack_offset, in0, in1, in2, in3, in4, in5, in6, in7
+        add             r1, sp, #\stack_offset
+        vst1.s16        {\in0}, [r1, :128]!
+        vst1.s16        {\in1}, [r1, :128]!
+        vst1.s16        {\in2}, [r1, :128]!
+        vst1.s16        {\in3}, [r1, :128]!
+        vst1.s16        {\in4}, [r1, :128]!
+        vst1.s16        {\in5}, [r1, :128]!
+        vst1.s16        {\in6}, [r1, :128]!
+        vst1.s16        {\in7}, [r1, :128]
+.endm
+
 .macro tr_16x4 name, shift
 function func_tr_16x4_\name
         mov             r1,  r5
@@ -348,11 +360,12 @@ function func_tr_16x4_\name
         add_member      d6, d1[2], d0[3], d0[0], d0[2], d1[1], d1[3], d1[0], d0[1], +, -, +, -, +, +, -, +
         add_member      d7, d1[3], d1[2], d1[1], d1[0], d0[3], d0[2], d0[1], d0[0], +, -, +, -, +, -, +, -
 
-        add             r4, sp, #512
+        add             r4, sp, #\stack_offset
         vld1.s16        {q0-q1}, [r4, :128]!
         vld1.s16        {q2-q3}, [r4, :128]!
 
         butterfly16     q0, q5, q1, q6, q2, q7, q3, q8
+    .if \step == 32
         scale           d26, d27, d28, d29, d30, d31, d16, d17, q4, q0, q5, q1, q6, q2, q7, q3, \shift
         transpose8_4x4  d26, d28, d30, d16
         transpose8_4x4  d17, d31, d29, d27
@@ -361,11 +374,15 @@ function func_tr_16x4_\name
         mov             r2, #32
         mov             r4, #-32
         store16         d26, d27, d28, d29, d30, d31, d16, d17
+    .else
+        store_to_stack (\stack_offset + 128), q4, q0, q5, q1, q6, q2, q7, q3
+    .endif
 
-        add             r4, sp, #576
+        add             r4, sp, #(\stack_offset + 64)
         vld1.s16        {q0-q1}, [r4, :128]!
         vld1.s16        {q2-q3}, [r4, :128]
         butterfly16     q0, q9, q1, q10, q2, q11, q3, q12
+    .if \step == 32
         scale           d26, d27, d28, d29, d30, d31, d8, d9, q4, q0, q9, q1, q10, q2, q11, q3, \shift
         transpose8_4x4  d26, d28, d30, d8
         transpose8_4x4  d9, d31, d29, d27
@@ -377,6 +394,9 @@ function func_tr_16x4_\name
         store16         d26, d27, d28, d29, d30, d31, d8, d9
 
         bx lr
+    .else
+        store_to_stack (\stack_offset + 256), q4, q0, q9, q1, q10, q2, q11, q3
+    .endif
 endfunc
 .endm
 
@@ -410,6 +430,93 @@ A       and             r7,  sp,  #15
         vpop            {q4-q7}
         pop             {r4-r7, lr}
         bx lr
+endfunc
+.endm
+
+.macro load32 offset
+        add             r1,  \in, #\offset
+        add             r3,  \in, #(\offset + 128)
+        mov             r2,  #256
+        vld1.s16        {d4}, [r1, :64], r2
+        vld1.s16        {d5}, [r3, :64], r2
+        vld1.s16        {d6}, [r1, :64], r2
+        vld1.s16        {d7}, [r3, :64], r2
+        vld1.s16        {d8}, [r1, :64], r2
+        vld1.s16        {d9}, [r3, :64], r2
+        vld1.s16        {d10}, [r1, :64], r2
+        vld1.s16        {d11}, [r3, :64], r2
+        vld1.s16        {d12}, [r1, :64], r2
+        vld1.s16        {d13}, [r3, :64], r2
+        vld1.s16        {d14}, [r1, :64], r2
+        vld1.s16        {d15}, [r3, :64], r2
+        vld1.s16        {d16}, [r1, :64], r2
+        vld1.s16        {d17}, [r3, :64], r2
+        vld1.s16        {d18}, [r1, :64], r2
+        vld1.s16        {d19}, [r3, :64], r2
+.endm
+
+.macro add_member32 in, t0, t1, t2, t3, op0, op1, op2, op3
+        sum_sub q10,     \in, \t0, \op0
+        sum_sub q11,     \in, \t1, \op1
+        sum_sub q12,     \in, \t2, \op2
+        sum_sub q13,     \in, \t3, \op3
+.endm
+
+.macro tr_32x4 horiz, shift, in, out
+        tr_16x4         \horiz, 7, r0, sp, 64, 8, 2048
+
+        load32         64
+        movrel          r1, trans + 32
+        vld1.s16        {q0}, [r1, :128]!
+        vld1.s16        {q1}, [r1, :128]
+
+        vmull.s16       q10, d4, d0[0]
+        vmull.s16       q11, d4, d0[1]
+        vmull.s16       q12, d4, d0[2]
+        vmull.s16       q13, d4, d0[3]
+
+        add_member32    d5,  d0[1], d1[0], d1[3], d0[3],
+        add_member32    d6,  d0[2], d1[3], d3[0], d2[2],
+        add_member32    d7,  d0[3], d2[2], d3[2], d3[2],
+        add_member32    d8,  d1[0], d3[1], d2[1], d1[3],
+        add_member32    d9,  d1[1], d3[3], d1[0], d2[1],
+        add_member32    d10, d1[2], d3[0], d0[0], d1[0],
+        add_member32    d11, d1[3], d2[1], d1[1], d0[0],
+        add_member32    d12, d2[0], d1[2], d2[2], d2[3]
+        add_member32    d13, d2[1], d0[3], d3[3], d2[3],
+        add_member32    d14, d2[2], d0[1], d2[3],
+        add_member32    d15, d2[3], d0[2], 
+        add_member32    d16, d3[0], d1[1],
+        add_member32    d17, d3[1], d2[0],
+        add_member32    d18, d3[2], d2[3],
+        add_member32    d19, d3[3], d3[2],
+
+
+
+
+.endm
+
+.macro idct_32x32 bitdepth
+function ff_hevc_idct_32x32_\bitdepth\()_neon, export=1
+@r0 - coeffs
+        push            {r4, lr}
+        vpush           {q4-q7}
+
+        @ Align the stack, allocate a temp buffer
+T       mov             lr,  sp
+T       and             lr,  lr,  #15
+A       and             lr,  sp,  #15
+        add             lr,  lr,  #2432
+        sub             sp,  sp,  lr
+
+        tr_32x4         0, 7, r0, sp
+
+        tr_32x4         0, 20 - \bitdepth, sp, r0
+
+        add             sp,  sp,  lr
+
+        vpop            {q4-q7}
+        pop             {r4, pc}
 endfunc
 .endm
 
