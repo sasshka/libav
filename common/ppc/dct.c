@@ -318,6 +318,44 @@ void x264_add8x8_idct_dc_altivec( uint8_t *p_dst, int16_t dct[4] )
     idct8_dc_altivec( &p_dst[4*FDEC_STRIDE+0], dcv );
 }
 
+#define ALTIVEC_STORE16_DC_SUM_CLIP( dest, dcv1, dcv2 )            \
+{                                                                  \
+    /* unaligned load */                                           \
+    vec_u8_t dstv    = vec_vsx_ld( 0, dest );                      \
+    vec_s16_t dcvsum1 = vec_adds( dcv1, vec_u8_to_s16_h( dstv ) ); \
+    vec_s16_t dcvsum2 = vec_adds( dcv2, vec_u8_to_s16_l( dstv ) ); \
+    vec_u8_t dcvsum8 = vec_packsu( dcvsum1, dcvsum2 );             \
+    /* unaligned store */                                          \
+    vec_vsx_st( dcvsum8, 0, dest );                                \
+}
+
+void x264_add16x16_idct_dc_altivec( uint8_t *p_dst, int16_t dct[16] )
+{
+    vec_s16_t dcv1, dcv2, dctv;
+    vec_s16_t v32 = vec_sl( vec_splat_s16(8), vec_splat_u16(2) );
+    vec_u16_t v6 = vec_splat_u16( 6 );
+
+    LOAD_ZERO;
+    for( int i = 0; i < 2; i++, dct += 8, p_dst += 8*FDEC_STRIDE )
+    {
+        dctv = vec_vsx_ld( 0, dct );
+        dctv = vec_sra( vec_add( dctv, v32 ), v6 );
+        dcv1 = (vec_s16_t)vec_mergeh( (vec_s32_t)vec_splat( dctv, 0 ), (vec_s32_t)vec_splat( dctv, 1 ) );
+        dcv1 = (vec_s16_t)vec_mergeh( (vec_s32_t)dcv1, (vec_s32_t)dcv1 );
+        dcv2 = (vec_s16_t)vec_mergeh( (vec_s32_t)vec_splat( dctv, 2 ), (vec_s32_t)vec_splat( dctv, 3 ) );
+        dcv2 = (vec_s16_t)vec_mergeh( (vec_s32_t)dcv2, (vec_s32_t)dcv2 );
+        for ( int j = 0; j < 4; j++)
+            ALTIVEC_STORE16_DC_SUM_CLIP( &p_dst[j*FDEC_STRIDE + 0], dcv1, dcv2 );
+
+        dcv1 = (vec_s16_t)vec_mergeh( (vec_s32_t)vec_splat( dctv, 4 ), (vec_s32_t)vec_splat( dctv, 5 ) );
+        dcv1 = (vec_s16_t)vec_mergeh( (vec_s32_t)dcv1, (vec_s32_t)dcv1 );
+        dcv2 = (vec_s16_t)vec_mergeh( (vec_s32_t)vec_splat( dctv, 6 ), (vec_s32_t)vec_splat( dctv, 7 ) );
+        dcv2 = (vec_s16_t)vec_mergeh( (vec_s32_t)dcv2, (vec_s32_t)dcv2 );
+        for ( int j = 0; j < 4; j++)
+            ALTIVEC_STORE16_DC_SUM_CLIP( &p_dst[(4+j)*FDEC_STRIDE + 0], dcv1, dcv2 );
+    }
+}
+
 #define IDCT_1D_ALTIVEC(s0, s1, s2, s3,  d0, d1, d2, d3) \
 {                                                        \
     /*        a0  = SRC(0) + SRC(2); */                  \
