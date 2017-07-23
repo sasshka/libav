@@ -61,6 +61,58 @@ void ff_hevc_idct_8x8_10_neon(int16_t *coeffs, int col_limit);
 void ff_hevc_idct_16x16_10_neon(int16_t *coeffs, int col_limit);
 void ff_hevc_idct_32x32_10_neon(int16_t *coeffs, int col_limit);
 
+void put_hevc_qpel_h2_neon(int16_t *dst, ptrdiff_t dststride,
+                                  uint8_t *src, ptrdiff_t srcstride,
+                                  int width, int height,           
+                                  int16_t* mcbuffer);               
+
+#define QPEL_FILTER_1(src, stride)      \
+    (1 * -src[x - 3 * stride] +         \
+     4 *  src[x - 2 * stride] -         \
+    10 *  src[x -     stride] +         \
+    58 *  src[x]              +         \
+    17 *  src[x +     stride] -         \
+     5 *  src[x + 2 * stride] +         \
+     1 *  src[x + 3 * stride])
+
+#define QPEL_FILTER_3(src, stride)      \
+    (1  * src[x - 2 * stride] -         \
+     5  * src[x -     stride] +         \
+    17  * src[x]              +         \
+    58  * src[x + stride]     -         \
+    10  * src[x + 2 * stride] +         \
+     4  * src[x + 3 * stride] -         \
+     1  * src[x + 4 * stride])
+
+static void ff_put_hevc_qpel_h_4_8_neon(int16_t *dst,  ptrdiff_t dststride,                             
+                                         uint8_t *src, ptrdiff_t srcstride,                              
+                                         int height, int mx, int my, int16_t* mcbuffer)            
+{                                                                                     
+    if (mx == 1) {                                                                     
+    int x, y;                                                     
+                                                                  
+    dststride /= sizeof(*dst);                                    
+    for (y = 0; y < height; y++) {                                
+        for (x = 0; x < 4; x++)                               
+            dst[x] = QPEL_FILTER_1(src, 1) >> (8 - 8);
+        src += srcstride;                                         
+        dst += dststride;                                         
+    }                                                             
+    } else if (mx == 2)                                                      
+        put_hevc_qpel_h2_neon(dst, dststride, src, srcstride, 4, height, mcbuffer);  
+    else {
+    int x, y;                                                      
+                                                                   
+    dststride /= sizeof(*dst);                                     
+    for (y = 0; y < height; y++) {                                 
+        for (x = 0; x < 4; x++)                                
+            dst[x] = QPEL_FILTER_3(src, 1) >> (8 - 8); 
+        src += srcstride;                                          
+        dst += dststride;                                          
+    }                                                              
+    }
+}
+
 av_cold void ff_hevc_dsp_init_arm(HEVCDSPContext *c, int bit_depth)
 {
     int cpu_flags = av_get_cpu_flags();
@@ -81,6 +133,8 @@ av_cold void ff_hevc_dsp_init_arm(HEVCDSPContext *c, int bit_depth)
             c->idct[1] = ff_hevc_idct_8x8_8_neon;
             c->idct[2] = ff_hevc_idct_16x16_8_neon;
             c->idct[3] = ff_hevc_idct_32x32_8_neon;
+
+            c->put_hevc_qpel[0][1][0] = ff_put_hevc_qpel_h_4_8_neon;
         }
         if (bit_depth == 10) {
             c->add_residual[0] = ff_hevc_add_residual_4x4_10_neon;
