@@ -54,8 +54,8 @@
 #include "libavutil/lfg.h"
 #include "ac3.h"
 #include "ac3dsp.h"
+#include "bitstream.h"
 #include "bswapdsp.h"
-#include "get_bits.h"
 #include "fft.h"
 #include "fmtconvert.h"
 
@@ -69,7 +69,7 @@
 typedef struct AC3DecodeContext {
     AVClass        *class;                  ///< class for AVOptions
     AVCodecContext *avctx;                  ///< parent context
-    GetBitContext gbc;                      ///< bitstream reader
+    BitstreamContext bc;                      ///< bitstream reader
 
 ///@name Bit stream information
 ///@{
